@@ -2,13 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-
+  
+  // Vercel deployment settings
+  output: 'standalone',
+  
   // Disable all static generation — everything is dynamic
-  // This prevents Vercel from caching any page or API route
   async headers() {
     return [
       {
-        // Apply to ALL routes
         source: '/(.*)',
         headers: [
           {
