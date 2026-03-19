@@ -80,7 +80,7 @@ export default function GitHubRepos({ searchTerm = '' }: GitHubReposProps) {
     }
 
     return (
-        <div className={` flex flex-col h-[45rem] ${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className={` flex flex-col h-[45rem] ${theme === 'dark' ? 'bg-black border-gray-700' : 'bg-white border-gray-200'}`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
