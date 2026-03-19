@@ -2,10 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  
-  // Vercel deployment settings
-  output: 'standalone',
-  
+
   // Disable all static generation — everything is dynamic
   async headers() {
     return [
