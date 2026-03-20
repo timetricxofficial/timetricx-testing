@@ -23,17 +23,18 @@ export async function POST(req: Request) {
     if (docType === 'signedOfferLetter') folder = 'timetricx/signedofferletter';
     else if (docType === 'noc') folder = 'timetricx/noc';
 
-    const publicId = `${email.split('@')[0]}_${docType}_${Date.now()}`;
+    const publicIdWithFolder = `${folder}/${email.split('@')[0]}_${docType}_${Date.now()}`;
+    const publicIdBase = publicIdWithFolder.split('/').pop() || '';
 
     // Generate signed params for direct upload
     const timestamp = Math.round(new Date().getTime() / 1000);
     
+    // Signature should include exact params that will be sent to Cloudinary
     const signature = cloudinary.utils.api_sign_request(
       {
         timestamp,
         folder,
-        public_id: publicId,
-        resource_type: 'auto',
+        public_id: publicIdBase,
       },
       process.env.CLOUD_API_SECRET!
     );
@@ -43,9 +44,9 @@ export async function POST(req: Request) {
       signature,
       timestamp,
       folder,
-      publicId: `${folder}/${publicId}`,
+      publicId: publicIdBase, // Only the filename part, not full path
       apiKey: process.env.CLOUD_API_KEY,
-      cloudName: process.env.CLOUD_NAME,
+      cloudName: process.env.CLOUD_NAME || 'timetricx',
     });
 
   } catch (err: any) {
