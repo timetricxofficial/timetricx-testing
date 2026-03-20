@@ -62,8 +62,83 @@ const DOCS = [
 ];
 
 /* =========================
-   HELPERS
+   CLIENT-SIDE UPLOAD (for large files - bypasses Vercel 4.5MB limit)
+   Direct upload to Cloudinary, then save URL to MongoDB
 ========================= */
+const uploadToCloudinaryDirect = async (
+  file: File,
+  email: string,
+  docType: string,
+  label: string,
+  oldUrl: string | null
+): Promise<{ success: boolean; url?: string; error?: string }> => {
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcvf3nmji';
+  
+  // Map docType to folder
+  let folder = 'timetricx';
+  if (docType === 'signedOfferLetter') folder = 'timetricx/signedofferletter';
+  else if (docType === 'noc') folder = 'timetricx/noc';
+
+  const publicId = `${email.split('@')[0]}_${docType}_${Date.now()}`;
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'timetricx_unsigned'); // Unsigned preset required
+  formData.append('folder', folder);
+  formData.append('public_id', publicId);
+  formData.append('resource_type', 'auto');
+
+  try {
+    // Step 1: Upload directly to Cloudinary (bypasses Vercel body size limit)
+    const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!uploadRes.ok) {
+      const errorData = await uploadRes.json();
+      console.error('[CLOUDINARY UPLOAD ERROR]', errorData);
+      return { success: false, error: errorData.error?.message || 'Cloudinary upload failed' };
+    }
+
+    const uploadData = await uploadRes.json();
+    const fileUrl = uploadData.secure_url;
+
+    // Step 2: Save URL to MongoDB via API
+    const saveRes = await fetch('/api/users/documents/save-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        docType,
+        url: fileUrl,
+      }),
+    });
+
+    const saveData = await saveRes.json();
+
+    if (!saveData.success) {
+      console.error('[SAVE URL ERROR]', saveData);
+      // Try to delete the uploaded file from Cloudinary if DB save failed
+      try {
+        const publicIdToDelete = `${folder}/${publicId}`;
+        await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ public_id: publicIdToDelete }),
+        });
+      } catch (cleanupErr) {
+        console.warn('[CLEANUP FAILED]', cleanupErr);
+      }
+      return { success: false, error: saveData.message || 'Failed to save document' };
+    }
+
+    return { success: true, url: fileUrl };
+  } catch (err: any) {
+    console.error('[DIRECT UPLOAD ERROR]', err);
+    return { success: false, error: err.message || 'Upload failed' };
+  }
+};
 const getUserFromCookies = () => {
   if (typeof document === 'undefined') return null;
 
@@ -137,6 +212,11 @@ export default function InternDocuments() {
 
   const email = user?.email;
 
+  // Check if document type should use client-side upload (for large files)
+  const isClientSideUpload = (docType: string): boolean => {
+    return docType === 'signedOfferLetter' || docType === 'noc';
+  };
+
   /* FETCH DOCS */
   useEffect(() => {
     if (!email) return;
@@ -164,6 +244,38 @@ export default function InternDocuments() {
   const uploadFile = async (file: File, docType: string, label: string) => {
     if (!email) return;
 
+    // ----- CLIENT-SIDE UPLOAD for signedOfferLetter & noc (large files) -----
+    if (isClientSideUpload(docType)) {
+      const oldUrl = docsData[docType] || null;
+      
+      // Validation
+      const isPdfFile = (f: File) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+      if (docType === 'signedOfferLetter' && !isPdfFile(file)) {
+        showAlert('Invalid Format', 'Offer Letter must be in PDF format.', 'error');
+        return;
+      }
+      if (docType === 'noc' && !isPdfFile(file) && !file.type.startsWith('image/')) {
+        showAlert('Invalid Format', 'NOC must be PDF or Image format.', 'error');
+        return;
+      }
+
+      setLoading(docType);
+      const result = await uploadToCloudinaryDirect(file, email, docType, label, oldUrl);
+      
+      if (result.success && result.url) {
+        setDocsData(prev => ({
+          ...prev,
+          [docType]: result.url,
+        }));
+        showAlert('Success', `${label} uploaded successfully!`, 'success');
+      } else {
+        showAlert('Upload Failed', result.error || 'Something went wrong during upload.', 'error');
+      }
+      setLoading(null);
+      return;
+    }
+
+    // ----- SERVER-SIDE UPLOAD for other documents (existing logic) -----
     // ----- ENFORCE FILE TYPES -----
     if (docType === 'aadhar' && file.type !== 'application/pdf') {
       showAlert('Invalid Format', 'Aadhar Card must be in PDF format.', 'error');
