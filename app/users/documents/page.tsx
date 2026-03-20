@@ -63,7 +63,7 @@ const DOCS = [
 
 /* =========================
    CLIENT-SIDE UPLOAD (for large files - bypasses Vercel 4.5MB limit)
-   Direct upload to Cloudinary, then save URL to MongoDB
+   Get signature from server → Upload to Cloudinary → Save URL to MongoDB
 ========================= */
 const uploadToCloudinaryDirect = async (
   file: File,
@@ -72,24 +72,33 @@ const uploadToCloudinaryDirect = async (
   label: string,
   oldUrl: string | null
 ): Promise<{ success: boolean; url?: string; error?: string }> => {
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcvf3nmji';
-  
-  // Map docType to folder
-  let folder = 'timetricx';
-  if (docType === 'signedOfferLetter') folder = 'timetricx/signedofferletter';
-  else if (docType === 'noc') folder = 'timetricx/noc';
-
-  const publicId = `${email.split('@')[0]}_${docType}_${Date.now()}`;
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', 'timetricx_unsigned'); // Unsigned preset required
-  formData.append('folder', folder);
-  formData.append('public_id', publicId);
-  formData.append('resource_type', 'auto');
-
   try {
-    // Step 1: Upload directly to Cloudinary (bypasses Vercel body size limit)
+    // Step 1: Get signed upload params from server
+    const sigRes = await fetch('/api/users/documents/get-signature', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, docType }),
+    });
+
+    const sigData = await sigRes.json();
+    
+    if (!sigData.success) {
+      console.error('[SIGNATURE ERROR]', sigData);
+      return { success: false, error: sigData.message || 'Failed to get upload signature' };
+    }
+
+    const { signature, timestamp, folder, publicId, apiKey, cloudName } = sigData;
+
+    // Step 2: Upload directly to Cloudinary with signature
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('api_key', apiKey);
+    formData.append('timestamp', timestamp.toString());
+    formData.append('signature', signature);
+    formData.append('folder', folder);
+    formData.append('public_id', publicId.split('/').pop() || '');
+    formData.append('resource_type', 'auto');
+
     const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
       method: 'POST',
       body: formData,
@@ -104,32 +113,17 @@ const uploadToCloudinaryDirect = async (
     const uploadData = await uploadRes.json();
     const fileUrl = uploadData.secure_url;
 
-    // Step 2: Save URL to MongoDB via API
+    // Step 3: Save URL to MongoDB via API
     const saveRes = await fetch('/api/users/documents/save-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        docType,
-        url: fileUrl,
-      }),
+      body: JSON.stringify({ email, docType, url: fileUrl }),
     });
 
     const saveData = await saveRes.json();
 
     if (!saveData.success) {
       console.error('[SAVE URL ERROR]', saveData);
-      // Try to delete the uploaded file from Cloudinary if DB save failed
-      try {
-        const publicIdToDelete = `${folder}/${publicId}`;
-        await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ public_id: publicIdToDelete }),
-        });
-      } catch (cleanupErr) {
-        console.warn('[CLEANUP FAILED]', cleanupErr);
-      }
       return { success: false, error: saveData.message || 'Failed to save document' };
     }
 
