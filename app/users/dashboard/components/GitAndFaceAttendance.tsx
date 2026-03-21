@@ -54,6 +54,7 @@ export default function GitAndFace() {
   const [holidayWorkRequest, setHolidayWorkRequest] = useState<HolidayRequest | null>(null);
   const [showHolidayReason, setShowHolidayReason] = useState(false);
   const [holidayReason, setHolidayReason] = useState("");
+  const [isSubmittingWorkRequest, setIsSubmittingWorkRequest] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const profileImgRef = useRef<HTMLImageElement | null>(null);
@@ -403,6 +404,7 @@ export default function GitAndFace() {
     }
 
     if (todayHoliday) {
+      setIsSubmittingWorkRequest(true);
       try {
         const userCookie = Cookies.get("user");
         if (userCookie) {
@@ -431,6 +433,8 @@ export default function GitAndFace() {
       } catch (err) {
         console.error("Error submitting work request", err);
         error('Error submitting work request');
+      } finally {
+        setIsSubmittingWorkRequest(false);
       }
     }
   };
@@ -555,10 +559,10 @@ export default function GitAndFace() {
                         </button>
                         <button
                           onClick={handleRequestToWork}
-                          disabled={!holidayReason.trim()}
+                          disabled={!holidayReason.trim() || isSubmittingWorkRequest}
                           className="flex-1 text-[10px] uppercase font-bold tracking-wide bg-red-500 hover:bg-red-600 text-white disabled:bg-red-300 py-1.5 rounded shadow-sm transition-all"
                         >
-                          Submit
+                          {isSubmittingWorkRequest ? 'Submitting...' : 'Submit'}
                         </button>
                       </div>
                     </div>
