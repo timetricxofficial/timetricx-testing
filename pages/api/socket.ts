@@ -23,6 +23,16 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseServerIO) => {
     const io = new ServerIO(res.socket.server, {
       path: "/api/socket",
       addTrailingSlash: false,
+      cors: {
+        origin: [
+          "https://timetricx.cybershoora.com",
+          "https://ttadmin.cybershoora.com",
+          "http://localhost:3000",
+          "http://localhost:3002"
+        ],
+        methods: ["GET", "POST"],
+        credentials: true
+      }
     });
 
     io.on("connection", (socket) => {
