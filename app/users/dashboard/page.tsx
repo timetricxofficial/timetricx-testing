@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { Profile, WorkingTime, GitAndFaceAttendance, CalenderAteendance, TrackTeam, MeetingNotification, LeaveModal, HelpModal, DashboardSkeleton, HolidayAnnouncementModal } from './components';
+import { InternshipProgressMini } from './components/InternshipProgressMini';
 import Dialog from '../../../components/ui/Dialog';
 
 import Loading from '../../../components/ui/Loading';
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const [profilePicture, setProfilePicture] = useState('');
   const [designation, setDesignation] = useState('');
   const [loading, setLoading] = useState(true);
+  const [userCreatedAt, setUserCreatedAt] = useState<string>('');
 
   const [openProfileMenu, setOpenProfileMenu] = useState(false);
   const [openHelpModal, setOpenHelpModal] = useState(false);
@@ -53,6 +55,7 @@ export default function Dashboard() {
 
         setProfilePicture(parsed.profilePicture || '');
         setDesignation(parsed.designation || '');
+        setUserCreatedAt(parsed.createdAt || '');
 
         const res = await fetch('/api/check-auth', {
           method: 'POST',
@@ -163,6 +166,11 @@ export default function Dashboard() {
               theme={theme}
             />
 
+            {/* INTERNSHIP PROGRESS MINI ICON */}
+            {userCreatedAt && (
+              <InternshipProgressMini createdAt={userCreatedAt} theme={theme} />
+            )}
+
             {/* PROFILE CARD */}
             <div ref={profileRef} className="flex items-center gap-4 border-2 border-blue-500 rounded-full p-2">
               <div className="flex items-center gap-4">
@@ -175,7 +183,9 @@ export default function Dashboard() {
                   />
                 ) : (
                   <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center">
-                    {user?.name?.[0]?.toUpperCase()}
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
                   </div>
                 )}
 

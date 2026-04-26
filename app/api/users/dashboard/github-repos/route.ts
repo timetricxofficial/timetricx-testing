@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
         if (accessToken) {
             // Try authenticated API first
-            const ghRes = await fetch("https://api.github.com/user/repos?sort=updated&per_page=50&type=owner", {
+            const ghRes = await fetch("https://api.github.com/user/repos?sort=updated&per_page=100&visibility=all&affiliation=owner,collaborator,organization_member", {
                 headers: {
                     Authorization: `token ${accessToken}`,
                     Accept: "application/json"

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/database";
-import { User } from "@/models/User";
+import { User, IUser } from "@/models/User";
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
 
-    let user = null;
+    let user: IUser | null = null;
 
     /* ---------------- EMAIL FLOW ---------------- */
     if (isEmail) {

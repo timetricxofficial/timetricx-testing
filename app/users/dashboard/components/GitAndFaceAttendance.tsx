@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Cookies from "js-cookie";
 import * as faceapi from "face-api.js";
 
@@ -10,63 +10,101 @@ import { useToast } from '../../../../contexts/ToastContext';
 import { loadFaceModels } from "../../../../utils/loadFaceModels.client";
 import { matchFacesClient } from "../../../../utils/matchFaces.client";
 
-const getColor = (count: number) => {
-  if (count === 0) return "#e5e7eb";
-  if (count < 3) return "#9be9a8";
-  if (count < 6) return "#40c463";
-  if (count < 9) return "#30a14e";
-  return "#216e39";
-};
-
-import { GitAndFaceAttendanceSkeleton } from "./SkeletonLoader"
-
-interface CompanyHoliday {
-  _id: string;
-  title: string;
-  date: string;
-  animationUrl: string;
-  animationResourceType: 'image' | 'video';
-}
-
-interface HolidayRequest {
-  _id: string;
-  status: 'pending' | 'approved' | 'rejected';
-  requestCount?: number;
-}
+import { GitAndFaceAttendanceSkeleton } from "./SkeletonLoader";
+import {
+  useSocket,
+  useLeaderElection,
+  useGitData,
+  useAttendance,
+  useFaceVerification,
+  useHolidayRequests,
+  GitGraph,
+  GitHubBadge,
+  FaceAttendanceCard,
+  HolidayBanner,
+  CameraModal,
+  CompletionPopup
+} from './gitandFacePages';
+import { InternshipProgress } from './gitandFacePages/components/InternshipProgress';
 
 export default function GitAndFace() {
   const { theme } = useTheme();
   const { success, error } = useToast();
 
-  const [data, setData] = useState<any>(null);
-  const [attendanceData, setAttendanceData] = useState<any>(null);
-  const [showCamera, setShowCamera] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [attendancePercentage, setAttendancePercentage] = useState(0);
-  const [countdown, setCountdown] = useState(0);
+  const [showCamera, setShowCamera] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [workingHours, setWorkingHours] = useState(0);
+  const [isAutoVerifying, setIsAutoVerifying] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [hasNotifiedCompletion, setHasNotifiedCompletion] = useState(false);
   const [showCompletionPopup, setShowCompletionPopup] = useState(false);
   const [hasAutoCheckedOut, setHasAutoCheckedOut] = useState(false);
-  const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
-  const [holidayWorkRequest, setHolidayWorkRequest] = useState<HolidayRequest | null>(null);
-  const [showHolidayReason, setShowHolidayReason] = useState(false);
-  const [holidayReason, setHolidayReason] = useState("");
-  const [isSubmittingWorkRequest, setIsSubmittingWorkRequest] = useState(false);
+  const [userCreatedAt, setUserCreatedAt] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const profileImgRef = useRef<HTMLImageElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Get user createdAt from cookie
+  useEffect(() => {
+    const userCookie = Cookies.get('user');
+    if (userCookie) {
+      try {
+        const user = JSON.parse(userCookie);
+        if (user.createdAt) {
+          setUserCreatedAt(user.createdAt);
+        }
+      } catch (e) {
+        console.error('Failed to parse user cookie');
+      }
+    }
+  }, []);
+
+  // Custom hooks
+  const { isLeader } = useLeaderElection();
+  const { data: gitData } = useGitData();
+  const { 
+    attendanceData, 
+    attendancePercentage, 
+    isCheckedIn, 
+    workingHours, 
+    fetchAttendance,
+    handleCheckInSuccess,
+    handleCheckOutSuccess 
+  } = useAttendance();
+  
+  const {
+    todayHoliday,
+    holidayWorkRequest,
+    showHolidayReason,
+    holidayReason,
+    isSubmittingWorkRequest,
+    setShowHolidayReason,
+    setHolidayReason,
+    setHolidayWorkRequest,
+    handleRequestToWork
+  } = useHolidayRequests();
+
+  const {
+    scheduledAt,
+    attemptNo,
+    requestingAdminId,
+    setStartCameraCallback,
+    handleVerificationRequest,
+    logVerificationAttempt,
+    clearVerificationState
+  } = useFaceVerification(isCheckedIn, isLeader);
+
+  const { socketRef, emitVerificationResult } = useSocket({
+    onVerificationRequest: handleVerificationRequest
+  });
 
   // ------------------ LOAD FACE MODELS (ONCE) ------------------
   useEffect(() => {
     loadFaceModels()
       .then(() => console.log("✅ Face models loaded (client)"))
       .catch(() => error("Failed to load face models"));
-  }, []);
+  }, [error]);
 
   // ------------------ AUTH CHECK ------------------
   useEffect(() => {
@@ -76,256 +114,115 @@ export default function GitAndFace() {
     }
   }, []);
 
-  // ------------------ GIT DATA ------------------
+  // Set camera start callback
   useEffect(() => {
-    const userCookie = Cookies.get("user");
-    if (!userCookie) return;
+    setStartCameraCallback((autoCapture: boolean, scheduledTime: string | null) => {
+      startCamera(autoCapture, scheduledTime);
+    });
+  }, [setStartCameraCallback]);
 
-    try {
-      const user = JSON.parse(userCookie);
-      if (!user || !user.email) return;
-
-      fetch("/api/attendance/git-track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email })
-      })
-        .then(res => res.json())
-        .then(d => {
-          if (d.success) setData(d.data);
-        });
-    } catch (e) {
-      console.error("Error parsing user cookie", e);
-    }
-  }, []);
-
-  // ------------------ FETCH ATTENDANCE ------------------
-  const fetchAttendance = async () => {
-    const userCookie = Cookies.get("user");
-    if (!userCookie) return;
-
-    try {
-      const user = JSON.parse(userCookie);
-      if (!user || !user.email) return;
-      const res = await fetch(`/api/attendance/get-attendance?email=${user.email}`);
-      const result = await res.json();
-
-      if (result.success) {
-        setAttendancePercentage(result.data.percentage);
-        setIsCheckedIn(result.data.todayEntry);
-        setAttendanceData(result.data);
-      }
-    } catch (e) {
-      console.error("Error fetching attendance or parsing user cookie", e);
-    }
-  };
-
-  const handleCheckButtonClick = () => {
-    // 24-hour system — check-in allowed anytime
-    startCamera();
-  };
-
-  useEffect(() => {
-    fetchAttendance();
-  }, []);
-
-  useEffect(() => {
-    if (Cookies.get('checkin_time')) setIsCheckedIn(true);
-  }, []);
-
-  // ------------------ FETCH HOLIDAY AND REQUESTS ------------------
-  useEffect(() => {
-    const fetchHolidayData = async () => {
-      const userCookie = Cookies.get("user");
-      if (!userCookie) return;
-
-      try {
-        const user = JSON.parse(userCookie);
-        if (!user || !user.email) return;
-
-        const res = await fetch('/api/users/dashboard/company-holidays', { cache: 'no-store' });
-        const data = await res.json();
-
-        if (data.success && data.data) {
-          const now = new Date();
-          const todayDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-
-          const holidayToday = data.data.find((h: CompanyHoliday) => {
-            const hDate = new Date(h.date);
-            const hDateStr = `${hDate.getFullYear()}-${(hDate.getMonth() + 1).toString().padStart(2, '0')}-${hDate.getDate().toString().padStart(2, '0')}`;
-            return hDateStr === todayDateStr;
-          });
-
-          if (holidayToday) {
-            setTodayHoliday(holidayToday);
-            // Check holiday work request status
-            const reqRes = await fetch(`/api/attendance/holiday-requests?email=${user.email}&date=${todayDateStr}`, { cache: 'no-store' });
-            const reqData = await reqRes.json();
-            if (reqData.success && reqData.data) {
-              setHolidayWorkRequest(reqData.data);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch holidays or parse user cookie:", err);
-      }
-    };
-    fetchHolidayData();
-  }, []);
-
-  // ------------------ REAL-TIME POLLING FOR REQUEST STATUS ------------------
-  useEffect(() => {
-    // Only poll when request is pending
-    if (!holidayWorkRequest || holidayWorkRequest.status !== 'pending') return;
-
-    const pollStatus = async () => {
-      try {
-        const userCookie = Cookies.get("user");
-        if (!userCookie) return;
-        const user = JSON.parse(userCookie);
-        const now = new Date();
-        const todayDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-
-        const reqRes = await fetch(`/api/attendance/holiday-requests?email=${user.email}&date=${todayDateStr}`, { cache: 'no-store' });
-        const reqData = await reqRes.json();
-
-        if (reqData.success && reqData.data && reqData.data.status !== 'pending') {
-          setHolidayWorkRequest(reqData.data);
-          // Dispatch event to trigger popup in HolidayAnnouncementModal
-          window.dispatchEvent(new CustomEvent('holidayRequestStatusChanged', {
-            detail: { status: reqData.data.status }
-          }));
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
-      }
-    };
-
-    const interval = setInterval(pollStatus, 10000); // Poll every 10 seconds
-    return () => clearInterval(interval);
-  }, [holidayWorkRequest]);
-
-
-  // ------------------ WORKING HOURS ------------------
-  const calculateWorkingHours = () => {
-    let entryTime: Date | null = null;
-
-    const cookieTime = Cookies.get('checkin_time');
-    if (cookieTime) entryTime = new Date(cookieTime);
-
-    if (!entryTime && attendanceData?.records) {
-      const today = new Date().toISOString().split('T')[0];
-      const rec = attendanceData.records.find((r: any) => r.date === today);
-      if (rec?.entryTime) {
-        const [time, meridian] = rec.entryTime.split(' ');
-        let [hh, mm] = time.split(':').map(Number);
-        if (meridian === 'PM' && hh !== 12) hh += 12;
-        if (meridian === 'AM' && hh === 12) hh = 0;
-        entryTime = new Date();
-        entryTime.setHours(hh, mm, 0, 0);
-      }
-    }
-
-    if (!entryTime) return;
-
-    const diff = (Date.now() - entryTime.getTime()) / (1000 * 60 * 60);
-    const hours = Math.min(Math.max(0, diff), 6);
-    setWorkingHours(hours);
-
-    // Auto checkout after 6 hours
-    if (hours >= 6 && !hasAutoCheckedOut && isCheckedIn) {
-      const userCookie = Cookies.get('user');
-      if (userCookie) {
-        try {
-          const user = JSON.parse(userCookie);
-          fetch('/api/attendance/checkout-request', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: user.email,
-              user: user // Send full user object if needed
-            })
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                success('Checked out request sent successfully at email');
-              }
-            })
-            .catch(err => {
-              console.error('Auto-checkout failed:', err);
-            });
-        } catch (e) {
-          console.error('Error parsing user data:', e);
-        }
-      }
-    }
-
-    if (hours >= 6 && !hasNotifiedCompletion) {
-      setShowCompletionPopup(true);
-      setHasNotifiedCompletion(true);
-      setTimeout(() => setShowCompletionPopup(false), 2000);
-    }
-  };
-
-  useEffect(() => {
-    if (!isCheckedIn || !attendanceData?.records) return;
-    calculateWorkingHours();
-    intervalRef.current = setInterval(calculateWorkingHours, 600000);
-    return () => intervalRef.current && clearInterval(intervalRef.current);
-  }, [isCheckedIn, attendanceData]);
-
-  // ------------------ CAMERA ------------------
-  const startCamera = async () => {
+  // ------------------ CAMERA CONTROLS ------------------
+  const startCamera = async (autoCapture: boolean = false, scheduledTime: string | null = null) => {
     setShowCamera(true);
-    setCameraReady(false);
-
-    setTimeout(async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
-        });
-        if (!videoRef.current) return;
+    setLoading(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: "user" 
+        } 
+      });
+      if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
-        await videoRef.current.play();
-        setCameraReady(true);
-      } catch {
-        error("Could not open camera");
+        
+        const playVideo = async () => {
+          if (!videoRef.current) return;
+          try {
+            await videoRef.current.play();
+            let attempts = 0;
+            while ((!videoRef.current.videoWidth || !videoRef.current.videoHeight) && attempts < 20) {
+              await new Promise(r => setTimeout(r, 100));
+              attempts++;
+            }
+            
+            setCameraReady(true);
+            setLoading(false);
+            if (autoCapture) {
+              setIsAutoVerifying(true);
+              setTimeout(() => captureAndMarkAttendance(true, scheduledTime), 500);
+            }
+          } catch (e) {
+            console.error("Video play error:", e);
+          }
+        };
+        playVideo();
       }
-    }, 500);
+    } catch (err) {
+      console.error("Camera error:", err);
+      error("Could not access camera");
+      setShowCamera(false);
+      setLoading(false);
+    }
   };
 
   const stopCamera = () => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
     setShowCamera(false);
-    setCountdown(0);
+    setCameraReady(false);
+    setIsAutoVerifying(false);
   };
 
   // ------------------ CAPTURE & VERIFY ------------------
-  const captureAndMarkAttendance = async () => {
-    if (!cameraReady) return error("Camera is not ready");
+  const captureAndMarkAttendance = async (immediate: boolean = false, scheduledTime: string | null = null) => {
+    if (immediate) {
+      let retries = 0;
+      while (retries < 10) {
+        if (videoRef.current && videoRef.current.videoWidth > 0 && videoRef.current.videoHeight > 0) {
+          setCameraReady(true);
+          break;
+        }
+        await new Promise(res => setTimeout(res, 500));
+        retries++;
+        console.log(`Waiting for camera... attempt ${retries}`);
+      }
+    }
 
-    setCountdown(2);
-    let t = 2;
-    const timer = setInterval(() => {
-      t--; setCountdown(t);
-      if (t === 0) { clearInterval(timer); takePhoto(); }
-    }, 1000);
+    if (!videoRef.current || videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0) {
+      setLoading(false);
+      setIsAutoVerifying(false);
+      setShowCamera(false);
+      return error("Camera is not ready");
+    }
+
+    if (immediate) {
+      takePhoto(scheduledTime);
+    } else {
+      setCountdown(2);
+      let t = 2;
+      const timer = setInterval(() => {
+        t--; setCountdown(t);
+        if (t === 0) { clearInterval(timer); takePhoto(); }
+      }, 1000);
+    }
   };
 
-  const takePhoto = async () => {
+  const takePhoto = async (passedScheduledAt: string | null = null) => {
     setLoading(true);
+    setCountdown(null); // Hide countdown during processing
 
     const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current!.videoWidth;
-    canvas.height = videoRef.current!.videoHeight;
+    if (!videoRef.current) return;
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
     const ctx = canvas.getContext("2d")!;
-    // Flip canvas horizontally to match the mirrored video display
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(videoRef.current!, 0, 0);
+    ctx.drawImage(videoRef.current, 0, 0);
 
     const imageData = canvas.toDataURL("image/jpeg");
 
@@ -340,24 +237,69 @@ export default function GitAndFace() {
     }
 
     const match = await matchFacesClient(liveImg, profileImgRef.current);
+    
+    const userCookie = Cookies.get("user");
+    if (!userCookie) {
+      error("User not found");
+      setLoading(false);
+      stopCamera();
+      return;
+    }
+    const user = JSON.parse(userCookie);
+
+    const effectiveScheduledAt = passedScheduledAt || scheduledAt;
+
+    // --- LOG VERIFICATION ATTEMPT ---
+    if (effectiveScheduledAt) {
+      const confidence = match.distance ? (1 - match.distance) : 0;
+      // Use matchType if available, fallback to match boolean
+      const matchStatus = match.matchType || (match.match ? "success" : match.success ? "fail" : "fail");
+      await logVerificationAttempt(user.email, matchStatus, confidence, attemptNo, effectiveScheduledAt);
+
+      let verificationStatus: "verified" | "partial_match" | "present_but_failed" | "not_present";
+      let statusMessage: string;
+      
+      if (matchStatus === "success") {
+        verificationStatus = "verified";
+        statusMessage = "Face verified ✔";
+        success(statusMessage);
+      } else if (matchStatus === "partial") {
+        verificationStatus = "partial_match";
+        statusMessage = "Partial match - User present but low confidence";
+        error("Partial match - Please ensure proper lighting and face position");
+      } else if (match.success) {
+        verificationStatus = "present_but_failed";
+        statusMessage = "Face mismatch - Human present but not verified";
+        error("Face mismatch");
+      } else {
+        verificationStatus = "not_present";
+        statusMessage = "No face detected - Human not present";
+        error("Face not detected");
+      }
+      
+      emitVerificationResult({
+        userId: user._id,
+        adminId: requestingAdminId || '699764f938248606e0fae6fb',
+        userName: user.name || user.email.split('@')[0],
+        status: verificationStatus,
+        score: match.distance ? (1 - match.distance) : 0,
+        message: statusMessage
+      });
+      
+      clearVerificationState();
+      setLoading(false);
+      stopCamera();
+      return; 
+    }
+
+    // --- MANUAL CHECK-IN/OUT LOGIC (Only if NOT scheduledAt) ---
     if (!match.success || !match.match) {
       error("Face mismatch");
       setLoading(false);
       stopCamera();
       return;
     }
-
-    const userCookie = Cookies.get("user");
-    if (!userCookie) return;
-
-    let user;
-    try {
-      user = JSON.parse(userCookie);
-    } catch (e) {
-      return;
-    }
-
-    if (!user || !user.email) return;
+    
     const apiUrl = isCheckedIn
       ? "/api/attendance/face-checkout"
       : "/api/attendance/face-attendance";
@@ -374,17 +316,9 @@ export default function GitAndFace() {
 
     if (result.success) {
       if (!isCheckedIn) {
-        Cookies.set('checkin_time', new Date().toISOString(), { expires: 1 });
-        // If user checks in again, remove any pending auto-logout
-        Cookies.remove('checkout_time');
-        // ✅ Immediately switch button to "Check Out"
-        setIsCheckedIn(true);
+        handleCheckInSuccess();
       } else {
-        Cookies.remove('checkin_time');
-        // 🔥 Set checkout_time → triggers 30-min auto-logout in layout
-        Cookies.set('checkout_time', new Date().toISOString(), { expires: 1 });
-        // ✅ Immediately switch button to "Check In"
-        setIsCheckedIn(false);
+        handleCheckOutSuccess();
       }
 
       success(isCheckedIn ? "Checked Out ✔ (Auto-logout in 30 min)" : "Attendance Marked ✔");
@@ -397,54 +331,51 @@ export default function GitAndFace() {
     stopCamera();
   };
 
-  const handleRequestToWork = async () => {
-    if (!holidayReason.trim()) {
-      error("Please provide a reason to work.");
-      return;
-    }
+  // ------------------ WORKING HOURS & AUTO CHECKOUT ------------------
+  useEffect(() => {
+    if (!isCheckedIn || workingHours < 8) return;
 
-    if (todayHoliday) {
-      setIsSubmittingWorkRequest(true);
-      try {
-        const userCookie = Cookies.get("user");
-        if (userCookie) {
+    if (workingHours >= 8 && !hasAutoCheckedOut) {
+      const userCookie = Cookies.get('user');
+      if (userCookie) {
+        try {
           const user = JSON.parse(userCookie);
-
-          const res = await fetch('/api/attendance/holiday-requests', {
+          fetch('/api/attendance/checkout-request', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               email: user.email,
-              holidayId: todayHoliday._id,
-              holidayDate: todayHoliday.date,
-              reason: holidayReason.trim()
+              user: user
             })
-          });
-
-          const data = await res.json();
-          if (data.success) {
-            success('Work request submitted successfully!');
-            setHolidayWorkRequest({ _id: data.data._id, status: 'pending' });
-            setShowHolidayReason(false);
-          } else {
-            error(data.message || 'Failed to submit request');
-          }
+          }).catch(err => console.error('Auto-checkout failed:', err));
+        } catch (e) {
+          console.error('Error parsing user data:', e);
         }
-      } catch (err) {
-        console.error("Error submitting work request", err);
-        error('Error submitting work request');
-      } finally {
-        setIsSubmittingWorkRequest(false);
       }
+      setHasAutoCheckedOut(true);
     }
+
+    if (workingHours >= 8 && !hasNotifiedCompletion) {
+      setShowCompletionPopup(true);
+      setHasNotifiedCompletion(true);
+      setTimeout(() => setShowCompletionPopup(false), 2000);
+    }
+  }, [isCheckedIn, workingHours, hasAutoCheckedOut, hasNotifiedCompletion]);
+
+  const handleCheckButtonClick = () => {
+    startCamera();
   };
 
-  if (!data) {
+  // Show skeleton while loading git data
+  if (!gitData) {
     return <GitAndFaceAttendanceSkeleton />;
   }
 
+  const canWorkOnHoliday = !todayHoliday || holidayWorkRequest?.status === 'approved';
+
   return (
     <>
+      {/* Hidden profile image for face matching */}
       {(() => {
         try {
           const cookie = Cookies.get("user");
@@ -464,285 +395,63 @@ export default function GitAndFace() {
         }
       })()}
 
-
       {/* MAIN CARD */}
       <div className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} rounded-4xl shadow border ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'} p-6 transition-colors`}>
-
-        <h2 className={`text-lg font-semibold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-          Git & Face Attendance
-        </h2>
-
-        <div className="flex flex-col gap-6">
-          {(() => {
-            try {
-              const cookie = Cookies.get("user");
-              if (!cookie) return null;
-              const u = JSON.parse(cookie);
-              if (!u?.authProviders?.github?.username) return null;
-              return (
-                <div className={`flex items-center gap-2 -mb-4 px-2 py-1 rounded-md w-fit ${theme === 'dark' ? 'bg-white/5 border border-white/10' : 'bg-blue-50 border border-blue-100'}`}>
-                  <svg className={`w-4 h-4 ${theme === 'dark' ? 'text-gray-400' : 'text-blue-500'}`} fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.041-1.416-4.041-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                  <span className={`text-xs font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-blue-600'}`}>
-                    Linked Github: <span className="font-bold">{u.authProviders.github.username}</span>
-                  </span>
-                </div>
-              );
-            } catch (e) { return null; }
-          })()}
-          
-          <div className="flex gap-6">
-
-          {/* GIT GRAPH */}
-          <div className="flex overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {data.months.map((month: any, mi: number) => (
-              <div key={mi} className="flex">
-                <div>
-                  <p className={`text-xs font-semibold mb-2 text-center ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {month.month}
-                  </p>
-
-                  <div className="flex gap-1">
-                    {month.weeks.map((week: any, wi: number) => (
-                      <div key={wi} className="flex flex-col gap-1">
-                        {week.map((day: any, di: number) => (
-                          <div
-                            key={di}
-                            className="w-4 h-4 rounded-full"
-                            style={{ background: getColor(day.count) }}
-                          ></div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="mx-3 border-r"></div>
-              </div>
-            ))}
+        <div className="flex gap-6 items-start overflow-visible">
+          {/* LEFT SIDE - Title, Badge, Graph */}
+          <div className="flex-1 min-w-0 flex flex-col gap-2" style={{ maxWidth: 'calc(100% - 240px)' }}>
+            <h2 className={`text-lg font-semibold mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              Git & Face Attendance
+            </h2>
+            <GitHubBadge  theme={theme} />
+            <GitGraph months={gitData.months} theme={theme} />
           </div>
 
-          {/* FACE CARD */}
-          <div className={`w-130 -mt-15 -mb-4 bg-[#00c950] rounded-2xl p-2 shadow transition-colors`}>
-
-            {todayHoliday && (!holidayWorkRequest || holidayWorkRequest?.status !== 'approved') ? (
-              <div className="w-full mb-4 py-2 rounded-lg bg-red-50 text-red-600 text-center text-sm font-semibold border border-red-200">
-                <span className="block text-[#f43f5e] uppercase tracking-wider text-[10px] mb-0.5">Today is a holiday</span>
-                {todayHoliday.title}
-                {!holidayWorkRequest || (holidayWorkRequest.status === 'rejected' && (holidayWorkRequest.requestCount || 1) < 2) ? (
-                  !showHolidayReason ? (
-                    <>
-                      {holidayWorkRequest?.status === 'rejected' && (
-                        <p className="text-[10px] mt-2 mb-2 text-red-600 font-bold bg-red-100 py-1 rounded px-1">Enjoy your holiday! Previous work request not accepted.</p>
-                      )}
-                      <button
-                        onClick={() => setShowHolidayReason(true)}
-                        className="mt-2 text-[10px] uppercase font-bold tracking-wide bg-red-100 hover:bg-red-200 text-red-700 py-1.5 px-3 rounded-full shadow-sm transition-all active:scale-95 cursor-pointer block mx-auto"
-                      >
-                        {holidayWorkRequest?.status === 'rejected' ? 'This is your last attempt' : 'Request to Work'}
-                      </button>
-                    </>
-                  ) : (
-                    <div className="mt-2 flex flex-col items-center gap-1.5 px-2">
-                      <input
-                        type="text"
-                        placeholder="Reason for working?"
-                        className="w-full text-xs p-1.5 rounded border border-red-200 bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-red-400 placeholder-red-300"
-                        value={holidayReason}
-                        onChange={(e) => setHolidayReason(e.target.value)}
-                        autoFocus
-                      />
-                      <div className="flex gap-2 w-full">
-                        <button
-                          onClick={() => setShowHolidayReason(false)}
-                          className="flex-1 text-[10px] uppercase font-bold tracking-wide bg-gray-200 hover:bg-gray-300 text-gray-700 py-1.5 rounded shadow-sm transition-all"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleRequestToWork}
-                          disabled={!holidayReason.trim() || isSubmittingWorkRequest}
-                          className="flex-1 text-[10px] uppercase font-bold tracking-wide bg-red-500 hover:bg-red-600 text-white disabled:bg-red-300 py-1.5 rounded shadow-sm transition-all"
-                        >
-                          {isSubmittingWorkRequest ? 'Submitting...' : 'Submit'}
-                        </button>
-                      </div>
-                    </div>
-                  )
-                ) : holidayWorkRequest.status === 'pending' ? (
-                  <p className="text-[10px] mt-2 text-orange-600 font-bold bg-orange-100/50 py-1 rounded">Work request sent, waiting for approval.</p>
-                ) : holidayWorkRequest.status === 'rejected' ? (
-                  <p className="text-[10px] mt-2 text-red-600 font-bold bg-red-100 py-1 rounded px-1">Enjoy your holiday! Your work requests were not accepted.</p>
-                ) : null}
-              </div>
+          {/* RIGHT SIDE - Card pushed to right and centered vertically */}
+          <div className="flex-shrink-0 ml-auto self-center">
+            {todayHoliday && !canWorkOnHoliday ? (
+              <HolidayBanner
+                todayHoliday={todayHoliday}
+                holidayWorkRequest={holidayWorkRequest}
+                showHolidayReason={showHolidayReason}
+                holidayReason={holidayReason}
+                isSubmittingWorkRequest={isSubmittingWorkRequest}
+                theme={theme}
+                onShowReasonInput={() => setShowHolidayReason(true)}
+                onHideReasonInput={() => setShowHolidayReason(false)}
+                onReasonChange={setHolidayReason}
+                onSubmitRequest={handleRequestToWork}
+              />
             ) : (
-              <button
-                onClick={handleCheckButtonClick}
-                className={`w-full mb-4 py-2 rounded-lg text-white cursor-pointer
-                ${isCheckedIn ? "bg-red-600" : "bg-blue-600"}`}
-              >
-                {isCheckedIn ? "🚪 Check Out" : "📸 Check In"}
-              </button>
+              <FaceAttendanceCard
+                attendancePercentage={attendancePercentage}
+                isCheckedIn={isCheckedIn}
+                workingHours={workingHours}
+                attendanceData={attendanceData}
+                onCheckInOutClick={handleCheckButtonClick}
+                theme={theme}
+              />
             )}
-
-            <div className={`rounded-2xl p-2 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
-              <p className={`text-xs text-center mt-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                Total Attendance
-              </p>
-
-              <h3 className="text-xl font-bold text-blue-600 text-center">
-                {attendancePercentage}%
-              </h3>
-
-              {/* Working Hours */}
-              {isCheckedIn && (
-                <div className={` p-2 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className={`text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                      {workingHours >= 6 ? "Completed Hours" : "Working Hours"}
-                    </span>
-                    <span className={`text-sm font-bold text-blue-600`}>
-                      {workingHours.toFixed(1)} / 6 hrs
-                    </span>
-                  </div>
-
-                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(workingHours / 6) * 100}%` }}
-                    ></div>
-                  </div>
-
-                  {workingHours >= 6 && (
-                    <p className="text-xs text-blue-600 mt-1">
-                      ✓ 6 hours completed
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* LATEST ATTENDANCE RECORD */}
-              {attendanceData?.records && attendanceData.records.length > 0 && (
-                <div className={`mt-4 p-3 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'}`}>
-
-                  {(() => {
-                    // Pick the most recent record by date
-                    const latestRecord = [...attendanceData.records].sort(
-                      (a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()
-                    )[0];
-
-                    if (!latestRecord) {
-                      return (
-                        <p className={`text-xs text-gray-500`}>
-                          No attendance records available
-                        </p>
-                      );
-                    }
-
-                    return (
-                      <>
-                        <p className={`text-sm font-medium mb-1 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                          Latest Attendance
-                        </p>
-                        <p className={`text-[11px] mb-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Date: {latestRecord.date}
-                        </p>
-
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
-                              Entry: {latestRecord.entryTime || 'Not marked'}
-                            </span>
-                          </div>
-
-                          {latestRecord.exitTime && (
-                            <div className="flex justify-between text-xs">
-                              <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
-                                Exit: {latestRecord.exitTime}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
-    </div>
 
       {/* CAMERA MODAL */}
-      {showCamera && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <CameraModal
+        showCamera={showCamera}
+        isAutoVerifying={isAutoVerifying}
+        isCheckedIn={isCheckedIn}
+        cameraReady={cameraReady}
+        loading={loading}
+        countdown={countdown}
+        theme={theme}
+        videoRef={videoRef}
+        onClose={stopCamera}
+        onCapture={() => captureAndMarkAttendance(false)}
+      />
 
-          <div className={`rounded-xl p-6 w-[420px] ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
-
-            <h3 className={`text-lg font-bold mb-3 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-              {isCheckedIn ? "Check Out" : "Face Verification"}
-            </h3>
-
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full rounded-lg bg-black"
-              style={{ transform: 'scaleX(-1)' }}
-            />
-
-            {!cameraReady && (
-              <p className={`text-center text-sm mt-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
-                Camera loading...
-              </p>
-            )}
-
-            {countdown > 0 && (
-              <p className="text-center text-xl font-bold text-blue-600 mt-3">
-                Capturing in {countdown}
-              </p>
-            )}
-
-            {loading && (
-              <p className="text-center mt-2">
-                Verifying...
-              </p>
-            )}
-
-            <div className="flex gap-3 mt-4">
-
-              <button
-                onClick={stopCamera}
-                className={`flex-1 border rounded-lg py-2 cursor-pointer ${theme === 'dark' ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={captureAndMarkAttendance}
-                className="flex-1 bg-blue-600 text-white rounded-lg py-2 cursor-pointer"
-              >
-                Capture
-              </button>
-
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* WORKING HOURS COMPLETION POPUP */}
-      {showCompletionPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg animate-pulse">
-            <div className="flex items-center gap-3">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span className="font-semibold text-lg">Working Hours Completed!</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* COMPLETION POPUP */}
+      <CompletionPopup show={showCompletionPopup} />
     </>
   );
 }

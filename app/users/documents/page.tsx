@@ -257,9 +257,9 @@ export default function InternDocuments() {
       const result = await uploadToCloudinaryDirect(file, email, docType, label, oldUrl);
       
       if (result.success && result.url) {
-        setDocsData(prev => ({
+        setDocsData((prev: Record<string, string | null>) => ({
           ...prev,
-          [docType]: result.url,
+          [docType]: result.url || null,
         }));
         showAlert('Success', `${label} uploaded successfully!`, 'success');
       } else {

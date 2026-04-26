@@ -38,6 +38,7 @@ function SignupContent() {
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
 
   useEffect(() => {
+    if (!searchParams) return;
     const step = searchParams.get('step');
     const authSuccess = searchParams.get('auth_success');
 
@@ -58,6 +59,7 @@ function SignupContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (!searchParams) return;
     const authError = searchParams.get('auth_error');
     if (authError) {
       error(authError === 'account_not_exists' ? 'Account not found. Please register first.' : 'Auth failed: ' + authError);

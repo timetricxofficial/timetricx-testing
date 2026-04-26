@@ -152,15 +152,18 @@ export default function CompleteProfilePage() {
         <Section title="Basic Information" theme={theme}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="flex justify-center items-center">
-              <div className="relative w-32 h-32 rounded-full border-4 border-blue-500/30 p-1 bg-black/5 overflow-hidden shadow-inner">
-                <img
-                  src={form.profilePicture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + form.email}
-                  className="w-full h-full rounded-full object-cover shadow-2xl"
-                  alt="Profile"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/initials/svg?seed=' + form.name;
-                  }}
-                />
+              <div className="relative w-32 h-32 rounded-full border-4 border-blue-500/30 p-1 bg-black/5 overflow-hidden shadow-inner flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-600">
+                {form.profilePicture ? (
+                  <img
+                    src={form.profilePicture}
+                    className="w-full h-full rounded-full object-cover shadow-2xl"
+                    alt="Profile"
+                  />
+                ) : (
+                  <svg className="w-16 h-16 text-white/90" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  </svg>
+                )}
               </div>
             </div>
 

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     teamEmails: email,
   })
 
-  const result = []
+  const result: any[] = []
 
   for (const project of projects) {
     if (project.teamEmails.length <= 1) continue
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       email: { $in: project.teamEmails },
     })
 
-    const team = []
+    const team: any[] = []
 
     for (const user of users) {
       // 3️⃣ Count how many projects this user is in

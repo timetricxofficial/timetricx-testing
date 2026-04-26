@@ -86,35 +86,38 @@ export default function HolidayAnnouncementModal() {
                         // Check if it's a weekend (Sat/Sun)
                         const day = now.getDay();
                         if (day === 0 || day === 6) { // 0 = Sunday, 6 = Saturday
-                            setTodayHoliday({
-                                _id: 'weekend',
-                                title: day === 0 ? 'Sunday' : 'Saturday',
-                                date: todayDateStr,
-                                animationUrl: 'https://cdn.lottiestatus.com/animations/weekend_chill.mp4', // placeholder or specific
-                                animationResourceType: 'video'
-                            });
+                            // Fetch default holiday for weekend
+                            const defaultHoliday = data.data.find((h: any) => h.isDefault === true);
+                            
+                            if (defaultHoliday) {
+                                setTodayHoliday({
+                                    ...defaultHoliday,
+                                    title: day === 0 ? 'Sunday' : 'Saturday',
+                                    date: todayDateStr
+                                });
 
-                            // Check if request is already made for this weekend
-                            const reqRes = await fetch(`/api/attendance/holiday-requests?email=${user.email}&date=${todayDateStr}`, { cache: 'no-store' });
-                            const reqData = await reqRes.json();
+                                // Check if request is already made for this weekend
+                                const reqRes = await fetch(`/api/attendance/holiday-requests?email=${user.email}&date=${todayDateStr}`, { cache: 'no-store' });
+                                const reqData = await reqRes.json();
 
-                            if (!reqData.data) {
-                                const hasSeen = sessionStorage.getItem(`seen_weekend_${todayDateStr}`);
-                                if (!hasSeen) {
-                                    setModalMode('weekend');
-                                    setIsOpen(true);
-                                }
-                            } else if (reqData.data.status === 'approved') {
-                                const hasSeenApproval = sessionStorage.getItem(`seen_approved_weekend_${todayDateStr}`);
-                                if (!hasSeenApproval) {
-                                    setModalMode('approved');
-                                    setIsOpen(true);
-                                }
-                            } else if (reqData.data.status === 'rejected') {
-                                const hasSeenRejection = sessionStorage.getItem(`seen_rejected_weekend_${todayDateStr}`);
-                                if (!hasSeenRejection) {
-                                    setModalMode('rejected');
-                                    setIsOpen(true);
+                                if (!reqData.data) {
+                                    const hasSeen = sessionStorage.getItem(`seen_weekend_${todayDateStr}`);
+                                    if (!hasSeen) {
+                                        setModalMode('weekend');
+                                        setIsOpen(true);
+                                    }
+                                } else if (reqData.data.status === 'approved') {
+                                    const hasSeenApproval = sessionStorage.getItem(`seen_approved_weekend_${todayDateStr}`);
+                                    if (!hasSeenApproval) {
+                                        setModalMode('approved');
+                                        setIsOpen(true);
+                                    }
+                                } else if (reqData.data.status === 'rejected') {
+                                    const hasSeenRejection = sessionStorage.getItem(`seen_rejected_weekend_${todayDateStr}`);
+                                    if (!hasSeenRejection) {
+                                        setModalMode('rejected');
+                                        setIsOpen(true);
+                                    }
                                 }
                             }
                         }

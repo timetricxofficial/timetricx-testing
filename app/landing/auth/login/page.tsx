@@ -61,6 +61,7 @@ export default function Login() {
   };
 
   useEffect(() => {
+    if (!searchParams) return;
     const authError = searchParams.get('auth_error');
     if (authError) {
       if (authError === 'account_not_exists') {

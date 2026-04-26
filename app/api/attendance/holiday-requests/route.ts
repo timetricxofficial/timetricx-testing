@@ -53,11 +53,18 @@ export async function POST(req: Request) {
                 const adminEmail = process.env.ADMIN_EMAIL || "teamcybershoora@gmail.com";
 
                 if (user && holiday) {
+                    // Determine dynamic title for default holidays (e.g., Saturday/Sunday)
+                    let holidayTitle = (holiday as any).title;
+                    if ((holiday as any).isDefault) {
+                        const dayNum = new Date(normalizedDate).getDay();
+                        holidayTitle = dayNum === 0 ? "Sunday" : dayNum === 6 ? "Saturday" : holidayTitle;
+                    }
+
                     await sendHolidayWorkRequestMail(
                         adminEmail,
                         email,
                         (user as any).name || email,
-                        (holiday as any).title,
+                        holidayTitle,
                         normalizedDate,
                         reason,
                         existing._id.toString()
@@ -92,11 +99,18 @@ export async function POST(req: Request) {
         const adminEmail = process.env.ADMIN_EMAIL || "teamcybershoora@gmail.com";
 
         if (user && holiday) {
+            // Determine dynamic title for default holidays (e.g., Saturday/Sunday)
+            let holidayTitle = (holiday as any).title;
+            if ((holiday as any).isDefault) {
+                const dayNum = new Date(normalizedDate).getDay();
+                holidayTitle = dayNum === 0 ? "Sunday" : dayNum === 6 ? "Saturday" : holidayTitle;
+            }
+
             await sendHolidayWorkRequestMail(
                 adminEmail,
                 email,
                 (user as any).name || email,
-                (holiday as any).title,
+                holidayTitle,
                 normalizedDate,
                 reason,
                 newRequest._id.toString()
