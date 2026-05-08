@@ -8,11 +8,11 @@ export async function GET() {
     
     // Get all projects (no filter)
     const allProjects = await Project.find({}).lean();
-    console.log('DEBUG - All projects in DB:', allProjects.length);
+    
     
     // Get sample project details
     const sampleProject = allProjects[0];
-    console.log('DEBUG - Sample project:', sampleProject);
+    
     
     return NextResponse.json({
       success: true,

@@ -24,12 +24,12 @@ export function useSocket({ onVerificationRequest }: UseSocketProps) {
       });
 
       socketInstance.on('connect', () => {
-        console.log('Connected to socket server');
+        
         socketInstance.emit('join_room', user._id);
       });
 
       socketInstance.on('trigger_face_verification', (data) => {
-        console.log('Admin requested presence check:', data);
+        
         const checkInTime = localStorage.getItem('face_verify_checkin_time');
         const scheduledTime = checkInTime 
           ? parseISTDate(checkInTime).toISOString() 
@@ -59,7 +59,7 @@ export function useSocket({ onVerificationRequest }: UseSocketProps) {
   }) => {
     if (socketRef.current) {
       socketRef.current.emit('verification_result', data);
-      console.log('✅ Sent verification_result to Admin:', data.adminId, 'Status:', data.status);
+      
     } else {
       console.error('❌ Socket not available, cannot emit verification_result');
     }

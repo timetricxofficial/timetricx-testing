@@ -102,7 +102,7 @@ export default function GitAndFace() {
   // ------------------ LOAD FACE MODELS (ONCE) ------------------
   useEffect(() => {
     loadFaceModels()
-      .then(() => console.log("✅ Face models loaded (client)"))
+      .then(() => console.log("Face models loaded successfully"))
       .catch(() => error("Failed to load face models"));
   }, [error]);
 
@@ -188,7 +188,7 @@ export default function GitAndFace() {
         }
         await new Promise(res => setTimeout(res, 500));
         retries++;
-        console.log(`Waiting for camera... attempt ${retries}`);
+        
       }
     }
 

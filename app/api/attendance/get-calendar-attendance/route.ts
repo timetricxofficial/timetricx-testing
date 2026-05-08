@@ -37,7 +37,7 @@ export async function GET(req: Request) {
       },
     });
   } catch (err) {
-    console.log("CALENDAR API ERROR:", err);
+    
     return NextResponse.json({
       success: false,
       message: "Server error",

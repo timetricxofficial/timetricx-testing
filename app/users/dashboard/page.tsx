@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import { useTheme } from '../../../contexts/ThemeContext';
-import { Profile, WorkingTime, GitAndFaceAttendance, CalenderAteendance, TrackTeam, MeetingNotification, LeaveModal, HelpModal, DashboardSkeleton, HolidayAnnouncementModal } from './components';
+import { Profile, WorkingTime, GitAndFaceAttendance, CalenderAteendance, TrackTeam, MeetingNotification, LeaveModal, HelpModal, DashboardSkeleton, HolidayAnnouncementModal, CompleteProfileModal } from './components';
 import { InternshipProgressMini } from './components/InternshipProgressMini';
 import Dialog from '../../../components/ui/Dialog';
 
@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [designation, setDesignation] = useState('');
   const [loading, setLoading] = useState(true);
   const [userCreatedAt, setUserCreatedAt] = useState<string>('');
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const [openProfileMenu, setOpenProfileMenu] = useState(false);
   const [openHelpModal, setOpenHelpModal] = useState(false);
@@ -73,6 +74,27 @@ export default function Dashboard() {
         }
 
         setUser(data.data.user);
+
+        // Fetch completeness data via API
+        const completenessRes = await fetch(`/api/auth/check-completeness?email=${parsed.email}`);
+        const completenessData = await completenessRes.json();
+
+        if (completenessData.success) {
+          const u = completenessData.data;
+          const isIncomplete = 
+            !u.mobileNumber || 
+            !u.workingRole || 
+            !u.skills || u.skills.length === 0 || 
+            !u.bio || 
+            !u.gender || 
+            !u.location;
+
+          if (isIncomplete) {
+            setShowProfileModal(true);
+            // Store specific missing fields data to pass to modal if needed
+            setUser(prev => ({ ...prev, ...u }));
+          }
+        }
       } catch {
         router.push('/landing/auth/login');
       } finally {
@@ -167,9 +189,9 @@ export default function Dashboard() {
             />
 
             {/* INTERNSHIP PROGRESS MINI ICON */}
-            {userCreatedAt && (
+            {/* {userCreatedAt && (
               <InternshipProgressMini createdAt={userCreatedAt} theme={theme} />
-            )}
+            )} */}
 
             {/* PROFILE CARD */}
             <div ref={profileRef} className="flex items-center gap-4 border-2 border-blue-500 rounded-full p-2">
@@ -317,6 +339,8 @@ export default function Dashboard() {
       />
 
       <HolidayAnnouncementModal />
+      
+      <CompleteProfileModal isOpen={showProfileModal} userData={user} />
     </>
   );
 }

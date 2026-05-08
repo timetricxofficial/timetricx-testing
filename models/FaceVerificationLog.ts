@@ -2,14 +2,14 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IAttempt {
   attemptNo: number;
-  time: Date;
+  time: string; // IST Time string
   status: "success" | "partial" | "fail";
   confidence?: number;
 }
 
 export interface ISession {
-  scheduledAt: Date;
-  nextRetryAt?: Date;
+  scheduledAt: string; // IST DateTime string
+  nextRetryAt?: string; // IST DateTime string
   finalStatus: "pending" | "success" | "suspicious" | "missed";
   interruptedReason?: string;
   attempts: IAttempt[];
@@ -24,14 +24,14 @@ export interface IFaceVerificationLog extends Document {
 
 const AttemptSchema = new Schema<IAttempt>({
   attemptNo: { type: Number, required: true },
-  time: { type: Date, default: Date.now },
+  time: { type: String, required: true },
   status: { type: String, enum: ["success", "partial", "fail"], required: true },
   confidence: { type: Number },
 });
 
 const SessionSchema = new Schema<ISession>({
-  scheduledAt: { type: Date, required: true },
-  nextRetryAt: { type: Date },
+  scheduledAt: { type: String, required: true },
+  nextRetryAt: { type: String },
   finalStatus: { 
     type: String, 
     enum: ["pending", "success", "suspicious", "missed"], 

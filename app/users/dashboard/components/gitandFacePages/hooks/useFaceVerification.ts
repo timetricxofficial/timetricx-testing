@@ -17,10 +17,19 @@ export function useFaceVerification(isCheckedIn: boolean, isLeader: boolean) {
   const [requestingAdminId, setRequestingAdminId] = useState<string | null>(null);
   
   const onStartCameraRef = useRef<((autoCapture: boolean, scheduledTime: string | null) => void) | null>(null);
+  const scheduledAtRef = useRef<string | null>(null);
+  const retryCountdownRef = useRef<number>(0);
+  const isStartingVerificationRef = useRef<boolean>(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const setStartCameraCallback = useCallback((callback: (autoCapture: boolean, scheduledTime: string | null) => void) => {
     onStartCameraRef.current = callback;
   }, []);
+
+  // Keep refs in sync with state
+  useEffect(() => { scheduledAtRef.current = scheduledAt; }, [scheduledAt]);
+  useEffect(() => { retryCountdownRef.current = retryCountdown; }, [retryCountdown]);
+  useEffect(() => { isStartingVerificationRef.current = isStartingVerification; }, [isStartingVerification]);
 
   const parseISTDate = useCallback((dateStr: string): Date => {
     const [datePart, timePart] = dateStr.split(', ');
@@ -91,7 +100,7 @@ export function useFaceVerification(isCheckedIn: boolean, isLeader: boolean) {
           });
           
           if (sessionDate !== today) {
-            console.log('Old pending session found, skipping:', sessionDate);
+            
             return;
           }
           
@@ -123,100 +132,101 @@ export function useFaceVerification(isCheckedIn: boolean, isLeader: boolean) {
   }, [isCheckedIn, parseISTDate]);
 
   useEffect(() => {
-    console.log('[DEBUG] 2-hour scheduler useEffect triggered');
-    console.log('[DEBUG] isCheckedIn:', isCheckedIn, 'isLeader:', isLeader);
+    
+    
     
     if (!isCheckedIn || !isLeader) {
-      console.log('[DEBUG] Skipping scheduler - isCheckedIn or isLeader is false');
+      
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    // Don't start another interval if one is already running
+    if (intervalRef.current) {
+      
       return;
     }
 
     const checkInTime = localStorage.getItem('face_verify_checkin_time');
-    console.log('[DEBUG] localStorage checkInTime:', checkInTime);
-    
-    if (checkInTime) {
-      const checkInDate = parseISTDate(checkInTime);
-      const hoursSinceCheckIn = (Date.now() - checkInDate.getTime()) / (1000 * 60 * 60);
-      console.log('[DEBUG] Hours since check-in:', hoursSinceCheckIn);
+    if (!checkInTime) {
       
-      if (hoursSinceCheckIn >= 8) {
-        console.log('[DEBUG] 8 hours completed, stopping verification');
-        return;
-      }
-    } else {
-      console.log('[DEBUG] No checkInTime in localStorage!');
+      return;
+    }
+
+    const checkInDate = parseISTDate(checkInTime);
+    const hoursSinceCheckIn = (Date.now() - checkInDate.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceCheckIn >= 8) {
+      
       return;
     }
     
-    console.log('[DEBUG] ✅ 2-hour scheduler STARTING');
+    
 
-    const interval = setInterval(async () => {
-      console.log('[DEBUG] ⏰ 2-hour interval TRIGGERED at:', new Date().toLocaleTimeString());
+    intervalRef.current = setInterval(async () => {
       
-      if (scheduledAt || retryCountdown > 0 || isStartingVerification) {
-        console.log('[DEBUG] Skipping 2-hour interval - Session in progress or Retrying');
-        return;
-      }
       
-      const checkInTime = localStorage.getItem('face_verify_checkin_time');
-      console.log('[DEBUG] Interval - checkInTime:', checkInTime);
-      
-      if (checkInTime) {
-        const checkInDate = parseISTDate(checkInTime);
-        const hoursSinceCheckIn = (Date.now() - checkInDate.getTime()) / (1000 * 60 * 60);
-        console.log('[DEBUG] Interval - hoursSinceCheckIn:', hoursSinceCheckIn);
+      // Use refs to check current state without closure issues
+      if (scheduledAtRef.current || retryCountdownRef.current > 0 || isStartingVerificationRef.current) {
         
-        if (hoursSinceCheckIn >= 8) {
-          console.log('[DEBUG] 8 hours completed, stopping verification');
-          return;
-        }
-      } else {
-        console.log('[DEBUG] No checkInTime in localStorage during interval!');
         return;
       }
       
       const userCookie = Cookies.get('user');
-      console.log('[DEBUG] Interval - userCookie exists:', !!userCookie);
-      if (!userCookie) {
-        console.log('[DEBUG] No userCookie, returning');
-        return;
-      }
-      
+      if (!userCookie) return;
+
+      isStartingVerificationRef.current = true;
       setIsStartingVerification(true);
       
       try {
         const user = JSON.parse(userCookie);
-        console.log('[DEBUG] Interval - checking API for:', user.email);
         const res = await fetch(`/api/attendance/face-verify-log?email=${user.email}`);
         const data = await res.json();
-        console.log('[DEBUG] Interval - API response:', data);
         
         if (data.success && data.pendingSession) {
-          console.log('[DEBUG] Existing pending session found, skipping');
+          
+          setScheduledAt(data.pendingSession.scheduledAt);
+          setAttemptNo(data.pendingSession.attempts.length + 1);
+          isStartingVerificationRef.current = false;
           setIsStartingVerification(false);
+          
+          if (onStartCameraRef.current) {
+            onStartCameraRef.current(true, data.pendingSession.scheduledAt);
+          }
           return;
         }
 
-        console.log('[DEBUG] ✅ No pending session, starting new verification');
-        const checkInTime = localStorage.getItem('face_verify_checkin_time');
-        const scheduledTime = checkInTime ? parseISTDate(checkInTime).toISOString() : new Date().toISOString();
+        
+        const scheduledTime = parseISTDate(localStorage.getItem('face_verify_checkin_time')!).toISOString();
+        
         setScheduledAt(scheduledTime);
         setAttemptNo(1);
         setVerificationStatus('pending');
-        localStorage.setItem('face_verify_last_capture', new Date().toISOString());
-        console.log('[DEBUG] 📸 Starting camera for auto capture, scheduledAt:', scheduledTime);
+        
         if (onStartCameraRef.current) {
+          
           onStartCameraRef.current(true, scheduledTime);
+        } else {
+          console.error('[DEBUG] ❌ Cannot open Camera Modal: onStartCameraRef.current is null');
         }
       } catch (err) {
-        console.error('Scheduler pre-check error:', err);
+        console.error('Scheduler error:', err);
       } finally {
+        isStartingVerificationRef.current = false;
         setIsStartingVerification(false);
       }
     }, 2 * 60 * 60 * 1000);
 
-    return () => clearInterval(interval);
-  }, [isCheckedIn, isLeader, scheduledAt, retryCountdown, isStartingVerification, parseISTDate]);
+    return () => {
+      if (intervalRef.current) {
+        
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isCheckedIn, isLeader, parseISTDate]);
 
   const logVerificationAttempt = useCallback(async (
     email: string,
@@ -259,6 +269,14 @@ export function useFaceVerification(isCheckedIn: boolean, isLeader: boolean) {
 
   const clearVerificationState = useCallback(() => {
     setRequestingAdminId(null);
+    setScheduledAt(null);
+    setVerificationStatus(null);
+    setAttemptNo(1);
+    setNextRetryAt(null);
+    setRetryCountdown(0);
+    isStartingVerificationRef.current = false;
+    setIsStartingVerification(false);
+    
   }, []);
 
   return {

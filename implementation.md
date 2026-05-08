@@ -28,6 +28,20 @@ This document tracks the features and fixes implemented in the Timetricx system.
 - ✅ **Device Fingerprinting**: Implementation of unique device IDs to prevent concurrent logins on multiple devices.
 - ✅ **Auto-Logout Logic**: Automatic session termination after checkout with a configurable countdown.
 - ✅ **Force Logout**: Real-time detection and logout if another device logs in using the same credentials.
+- ✅ **Admin-Triggered Face Verification**: Real-time face verification requests via Socket.IO from Admin dashboard.
+- ✅ **Auto-Camera Start**: Automatic camera activation on user side when admin requests verification.
+
+## 6. User Profile & UI Enhancements
+- ✅ **Profile Completeness Check**: Dynamic check for missing fields (Mobile, Skills, Bio, etc.) on dashboard load.
+- ✅ **Missing Fields Modal**: Modern, theme-aware popup listing specific missing profile fields.
+
+## 7. Meeting Notification System
+- ✅ **Pinned Meetings**: Special "Every time room" treatment for pinned meetings with a vertical layout.
+- ✅ **Pinned Sorting**: Pinned meetings automatically sort to the top of the notification list.
+- ✅ **Visual Indicators**: Left-side accent bar and Message icon for pinned rooms (no textual "Pin" tag).
+- ✅ **Smart Notifications**: "Join Live" navbar button strictly excludes pinned meetings to prevent false blinking.
+- ✅ **Read/Unread Tracking**: Persistent unread counts with automated marking as read on modal open.
+- ✅ **Status-Aware Counting**: Only upcoming/live meetings contribute to the unread badge count.
 
 ---
-*Updated: April 26, 2026*
+*Updated: May 8, 2026*

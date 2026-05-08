@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const docType = formData.get('docType') as string;
     const file = formData.get('file') as File;
 
-    console.log(`[UPLOAD] email=${email}, docType=${docType}, filename=${file?.name}`);
+    
 
     if (!email || !docType || !file) {
       return NextResponse.json({ success: false, message: 'Missing fields' }, { status: 400 });
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-    console.log(`[UPLOAD] docType=${docType} | folder=${folderPath} | isPdf=${isPdf} | mime=${file.type}`);
+    
 
     /* =========================
        CLOUDINARY UPLOAD
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
             console.error('[UPLOAD] Cloudinary error:', err);
             return reject(err); // ← early return: ensures resolve() is NOT called on error
           }
-          console.log(`[UPLOAD] Cloudinary OK: ${result?.secure_url}`);
+          
           resolve(result);
         }
       ).end(buffer);
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
             const publicId = match[1].replace(/\.[^/.]+$/, '');
             await cloudinary.uploader.destroy(publicId, { resource_type: 'image' }).catch(() => { });
             await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }).catch(() => { });
-            console.log(`[CLEANUP] Deleted: ${publicId}`);
+            
           }
         } catch (e) {
           console.warn('[CLEANUP] ERR:', e);
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
       { upsert: true, new: true }
     );
 
-    console.log(`[DB SAVE] ✅ docType=${docType} | url=${uploadResult.secure_url} | _id=${saved?._id}`);
+    
 
     return NextResponse.json({
       success: true,

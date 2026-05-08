@@ -58,16 +58,11 @@ export async function GET(req: Request) {
        FORMAT RESPONSE
     ========================= */
     // 🔥 DEBUG: Check what profilePicture values look like
-    console.log('SIDEBAR DEBUG - Users:', users.map((u: any) => ({
-      name: u.name,
-      profilePicture: u.profilePicture,
-      type: typeof u.profilePicture,
-      length: u.profilePicture?.length
-    })));
-
     const interns = users.map((u: any) => ({
       id: u._id.toString(),
       name: u.name,
+      profilePicture: u.profilePicture,
+      type: typeof u.profilePicture,
       email: u.email,
 
       // 🖼 profile picture

@@ -7,13 +7,13 @@ export async function POST(req: Request) {
     await connectDB();
 
     const { email } = await req.json();
-    console.log('TRACK TEAM API - Received email:', email);
+    
 
     /* =====================
        BASIC VALIDATION
     ===================== */
     if (!email) {
-      console.log('TRACK TEAM API - No email provided');
+      
       return NextResponse.json(
         { success: false, message: 'Email required' },
         { status: 400 }
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     /* =====================
        FETCH PROJECTS
     ===================== */
-    console.log('TRACK TEAM API - Querying projects for email:', email);
+    
     const projects = await Project.find(
       {
         teamEmails: email,               // user is part of team
@@ -37,8 +37,8 @@ export async function POST(req: Request) {
       .limit(3)
       .lean();
 
-    console.log('TRACK TEAM API - Raw projects found:', projects);
-    console.log('TRACK TEAM API - Number of projects:', projects.length);
+    
+    
 
     /* =====================
        FORMAT RESPONSE
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       teamEmails: project.teamEmails,
     }));
 
-    console.log('TRACK TEAM API - Formatted projects:', formattedProjects);
+    
 
     return NextResponse.json({
       success: true,

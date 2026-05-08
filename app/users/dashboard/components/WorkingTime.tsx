@@ -228,7 +228,7 @@ export default function WorkingTimeCircle() {
           </p>
         </div>
 
-        <ResponsiveContainer width="100%" height="100%" className="relative z-20">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} className="relative z-20">
           <PieChart>
             <Pie
               data={chart}

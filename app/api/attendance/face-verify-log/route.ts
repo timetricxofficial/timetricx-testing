@@ -61,8 +61,9 @@ export async function GET(req: Request) {
 
     for (const session of log.sessions) {
       if (session.finalStatus === "pending") {
-        const nextRetryAt = session.nextRetryAt || session.scheduledAt;
-        const diffMs = now.getTime() - nextRetryAt.getTime();
+        // Since scheduledAt and nextRetryAt are now strings, we need to parse them for calculation
+        const nextRetryAtDate = session.nextRetryAt ? new Date(session.nextRetryAt) : new Date(session.scheduledAt);
+        const diffMs = now.getTime() - nextRetryAtDate.getTime();
         const diffMins = diffMs / (1000 * 60);
 
         // ❌ Missed: Beyond threshold
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
     await connectDB();
     const today = getIndianDate();
     const now = new Date();
+    const istTimeStr = toIndianTimeString(now);
 
     let log = await FaceVerificationLog.findOne({ userEmail: email, date: today });
     if (!log) {
@@ -119,15 +121,15 @@ export async function POST(req: Request) {
       });
     }
 
-    // Convert incoming scheduledAt to proper Date for comparison
-    const scheduledAtDate = new Date(scheduledAt);
+    // scheduledAt is coming from client (ISO string), keep it as is for comparison
+    // or store as IST string if needed. Let's keep it as received to match client state.
     
-    let session = log.sessions.find((s: any) => s.scheduledAt.getTime() === scheduledAtDate.getTime());
+    let session = log.sessions.find((s: any) => s.scheduledAt === scheduledAt);
 
     // Initial creation of session if it doesn't exist (first attempt)
     if (!session) {
       session = {
-        scheduledAt: scheduledAtDate,
+        scheduledAt: scheduledAt,
         attempts: [],
         finalStatus: "pending"
       };
@@ -136,10 +138,10 @@ export async function POST(req: Request) {
       session = log.sessions[log.sessions.length - 1];
     }
 
-    // Add new attempt with JS Date
+    // Add new attempt with IST Time string
     session.attempts.push({
       attemptNo: attemptNo || (session.attempts.length + 1),
-      time: now,
+      time: istTimeStr,
       status: status, // "success" | "partial" | "fail"
       confidence: confidence
     });
@@ -162,7 +164,9 @@ export async function POST(req: Request) {
     } else {
       // Still have attempts left, continue retry
       session.finalStatus = "pending";
-      session.nextRetryAt = new Date(now.getTime() + RETRY_DELAY_MINUTES * 60000);
+      // Store nextRetryAt as ISO for easier client calculation, or IST? 
+      // Let's use ISO for nextRetryAt to maintain calculation logic in GET
+      session.nextRetryAt = new Date(now.getTime() + RETRY_DELAY_MINUTES * 60000).toISOString();
     }
 
     await log.save();

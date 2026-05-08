@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       participants: googleEmail.toLowerCase()
     })
     .select(
-      "projectName meetingLink startTime endTime status readBy participants"
+      "projectName meetingLink startTime endTime status readBy participants isPinned"
     )
     .sort({ startTime: 1 })
 

@@ -9,6 +9,7 @@ import HelpModal from './HelpModal';
 import DashboardSkeleton from './SkeletonLoader';
 import HolidayAnnouncementModal from './HolidayAnnouncementModal';
 import GitHubRepos from './GitHubRepos';
+import CompleteProfileModal from './CompleteProfileModal';
 
 export {
     Profile,
@@ -21,5 +22,6 @@ export {
     HelpModal,
     DashboardSkeleton,
     HolidayAnnouncementModal,
-    GitHubRepos
+    GitHubRepos,
+    CompleteProfileModal
 };
