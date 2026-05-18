@@ -199,7 +199,9 @@ export default function CalendarPage() {
       let fillColor = ''
       let fillPct = 0
       let textColor = 'white'
-      let tooltip = ''
+      let tooltipEntry = ''
+      let tooltipExit = ''
+      let tooltipLabel = ''
 
       let baseBg = theme === 'dark' ? '#1f2937' : '#e5e7eb'
 
@@ -213,13 +215,13 @@ export default function CalendarPage() {
         textColor = 'white'
         label = companyHoliday.title
         if (companyHoliday.animationUrl) {
-          tooltip = `✨ ${companyHoliday.title}`
+          const tooltip = `✨ ${companyHoliday.title}`
         }
       } else if (leaveForDate) {
         // 🗓️ Approved Leave (Personal)
         baseBg = '#f97316' // orange
         label = 'Leave'
-        tooltip = `Reason: ${leaveForDate.reason}`
+        const tooltip = `Reason: ${leaveForDate.reason}`
 
         const isLeftRounded = (!isLeaveMiddle && !isLeaveEnd) || date.getDay() === 0
         const isRightRounded = (!isLeaveMiddle && !isLeaveStart) || date.getDay() === 6
@@ -277,6 +279,12 @@ export default function CalendarPage() {
         fillPct = 100
       }
 
+      if (record?.entryTime) {
+        tooltipEntry = `Entry: ${record.entryTime}`
+        tooltipExit = record.exitTime ? `Exit: ${record.exitTime}` : ''
+        tooltipLabel = tooltipExit ? 'Attendance' : 'Checked-in'
+      }
+
       cells.push(
         <motion.div
           key={day}
@@ -284,8 +292,9 @@ export default function CalendarPage() {
           animate={{ opacity: 1, scale: 1 }}
           whileHover={{ scale: 1.08 }}
           transition={{ duration: 0.3, delay: day * 0.02 }}
+          title={tooltipEntry || tooltipExit ? `${tooltipEntry}${tooltipExit ? ' • ' + tooltipExit : ''}` : undefined}
           className={`h-14 ${roundingClass} flex flex-col items-center justify-center
-          text-sm font-semibold shadow-lg cursor-pointer relative overflow-hidden group ${className}`}
+          text-sm font-semibold shadow-lg cursor-pointer relative overflow-visible group ${className}`}
           style={{ background: baseBg, color: textColor }}
         >
           {/* 🎬 Holiday Animation Background */}
@@ -336,19 +345,23 @@ export default function CalendarPage() {
           {label && <span className="relative z-10 text-[10px] opacity-90">{label}</span>}
 
           {/* ✨ Animated Festive Bubble Tooltip */}
-          {tooltip && (
+          {(tooltipEntry || tooltipExit) && (
             <motion.div
               initial={{ opacity: 0, y: 10, scale: 0.8 }}
               whileHover={{ opacity: 1, y: -5, scale: 1 }}
-              className="absolute bottom-[110%] left-1/2 -translate-x-1/2 px-3 py-2 rounded-2xl 
-                         bg-white/10 backdrop-blur-xl border border-white/20 text-white text-[11px] 
-                         font-bold shadow-2xl pointer-events-none z-[100] whitespace-nowrap
-                         hidden group-hover:flex items-center gap-2"
+              className={`absolute bottom-[110%] left-1/2 -translate-x-1/2 min-w-[11rem] max-w-xs px-3 py-3 rounded-3xl 
+                         backdrop-blur-xl border shadow-2xl pointer-events-none z-[100] hidden group-hover:block 
+                         ${theme === 'dark' ? 'bg-slate-900/95 border-white/10 text-white' : 'bg-white/95 border-gray-200 text-slate-900'}`}
             >
-              <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-              {tooltip}
-              {/* Tooltip Arrow */}
-              <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-white/10" />
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[10px] uppercase tracking-[0.22em] opacity-70">{tooltipLabel}</span>
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+              </div>
+              <div className="flex flex-col gap-1 text-[12px] leading-5">
+                <span className={`rounded-2xl px-2 py-1 ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-100'}`}>{tooltipEntry}</span>
+                {tooltipExit && <span className={`rounded-2xl px-2 py-1 ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-100'}`}>{tooltipExit}</span>}
+              </div>
+              <div className={`absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent ${theme === 'dark' ? 'border-t-slate-900/95' : 'border-t-white/95'}`} />
             </motion.div>
           )}
         </motion.div>

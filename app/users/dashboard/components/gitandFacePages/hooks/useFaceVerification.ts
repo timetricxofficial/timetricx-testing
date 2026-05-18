@@ -5,6 +5,8 @@ import Cookies from 'js-cookie';
 import { useToast } from '../../../../../../contexts/ToastContext';
 import { VerificationSession } from '../types';
 
+const FACE_VERIFICATION_INTERVAL = 1 * 60 * 60 * 1000; // 1 hour
+
 export function useFaceVerification(isCheckedIn: boolean, isLeader: boolean) {
   const { success, error } = useToast();
   
@@ -217,7 +219,7 @@ export function useFaceVerification(isCheckedIn: boolean, isLeader: boolean) {
         isStartingVerificationRef.current = false;
         setIsStartingVerification(false);
       }
-    }, 2 * 60 * 60 * 1000);
+    }, FACE_VERIFICATION_INTERVAL);
 
     return () => {
       if (intervalRef.current) {

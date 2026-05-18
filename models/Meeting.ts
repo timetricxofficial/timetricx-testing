@@ -26,9 +26,7 @@ export interface IMeeting extends Document {
 const MeetingSchema = new Schema(
   {
     projectId: {
-      type: Schema.Types.ObjectId,
-      ref: "Project",
-      required: true,
+      type: String,
     },
 
     projectName: {
@@ -38,7 +36,6 @@ const MeetingSchema = new Schema(
     hostEmail: {
       type: String,
       required: true,
-      index: true,
     },
 
     participants: {
