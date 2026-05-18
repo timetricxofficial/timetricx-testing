@@ -10,7 +10,13 @@ import {
   Calendar,
   CheckCircle,
   Users,
-  ListChecks
+  ListChecks,
+  Github,
+  GitBranch,
+  MessageSquare,
+  ExternalLink,
+  FolderOpen,
+  Sparkles
 } from 'lucide-react'
 
 interface Project {
@@ -35,6 +41,22 @@ interface UsersMap {
     name: string
     profilePicture: string | null
   }
+}
+
+interface GitHubRepo {
+  id: number
+  name: string
+  html_url: string
+  description: string | null
+  updated_at: string
+  owner: {
+    login: string
+    avatar_url: string
+  }
+  private: boolean
+  lastCommitMessage?: string
+  lastCommitBranch?: string
+  lastCommitUrl?: string
 }
 
 export default function ProjectsComponent() {
@@ -75,8 +97,111 @@ export default function ProjectsComponent() {
     setLoading(false)
   }
 
+  // 🔥 Fetch Latest GitHub Collaboration
+  const [latestCollab, setLatestCollab] = useState<GitHubRepo | null>(null)
+  const [githubUsername, setGithubUsername] = useState<string>('')
+
+  const fetchLatestCollab = async () => {
+    const userCookie = Cookies.get('user')
+    if (!userCookie) return
+
+    const user = JSON.parse(userCookie)
+    const res = await fetch('/api/users/dashboard/github-repos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email })
+    })
+
+    const data = await res.json()
+    if (data.success && data.repos.length > 0) {
+      // Find repos where the current authenticated user is NOT the owner
+      const collabRepos = data.repos.filter((repo: GitHubRepo) => {
+        const ownerLogin = repo.owner.login.toLowerCase();
+        const githubUsernameFromCookie = user?.authProviders?.github?.username?.toLowerCase() || 
+                                       user?.authProviders?.github?.id?.toLowerCase();
+        const userName = user.name?.toLowerCase() || '';
+        const userEmailPrefix = user.email?.split('@')[0]?.toLowerCase() || '';
+
+        return ownerLogin !== githubUsernameFromCookie && 
+               ownerLogin !== userName && 
+               ownerLogin !== userEmailPrefix;
+      })
+      
+      if (collabRepos.length > 0) {
+        const sortedCollabs = collabRepos.sort((a: GitHubRepo, b: GitHubRepo) => 
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        );
+        
+        const latest = sortedCollabs[0];
+        
+        // Fetch last commit message for this repo
+        try {
+          const commitRes = await fetch(`https://api.github.com/repos/${latest.owner.login}/${latest.name}/commits?per_page=1`, {
+            headers: {
+              Authorization: `token ${user?.authProviders?.github?.accessToken}`,
+              Accept: "application/json"
+            }
+          });
+          if (commitRes.ok) {
+            const commits = await commitRes.json();
+            if (commits && commits.length > 0) {
+              const commitData = commits[0];
+              let rawMessage = commitData.commit.message;
+              let cleanMessage = rawMessage;
+              
+              // Extract the actual commit message from "Merge pull request..."
+              if (rawMessage.includes('Merge pull request')) {
+                const lines = rawMessage.split('\n').map(l => l.trim()).filter(l => l !== '');
+                
+                // If there's a multi-line message, the last line is usually the PR title
+                if (lines.length > 1) {
+                  cleanMessage = lines[lines.length - 1];
+                } else {
+                  // If it's single line: "Merge pull request #10 from Org/branch minor bugs fixed"
+                  // Try to find the branch name part and take everything after it
+                  const parts = rawMessage.split(' ');
+                  const branchIdx = parts.findIndex(p => p.includes('/') || p.includes('_updates'));
+                  if (branchIdx !== -1 && branchIdx < parts.length - 1) {
+                    cleanMessage = parts.slice(branchIdx + 1).join(' ');
+                  }
+                }
+              }
+              
+              latest.lastCommitMessage = cleanMessage;
+              latest.lastCommitUrl = commitData.html_url;
+              
+              // Correctly extract branch name from the raw message
+              if (rawMessage.includes('from ')) {
+                const fromParts = rawMessage.split('from ');
+                if (fromParts.length > 1) {
+                  // "TeamCybershoora/Tushar_updates minor bugs fixed"
+                  // We only want the first part after "from " which is the branch
+                  // Taking only the first word and removing any potential special characters or trail
+                  const branchWithText = fromParts[1].split(' ')[0].trim();
+                  
+                  // If it contains a slash (Org/Branch), get the last part
+                  let branchOnly = branchWithText.includes('/') ? branchWithText.split('/').pop() : branchWithText;
+                  
+                  // Ensure we don't include anything beyond the branch name
+                  // (Common branch names use alphanumeric, underscores, hyphens)
+                  latest.lastCommitBranch = branchOnly?.replace(/[^a-zA-Z0-9_-].*$/, '');
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching last commit:", err);
+        }
+
+        setLatestCollab(latest);
+        setGithubUsername(data.repos[0]?.owner?.login || '');
+      }
+    }
+  }
+
   useEffect(() => {
     fetchData()
+    fetchLatestCollab()
   }, [])
 
   const filtered = projects.filter(p =>
@@ -87,26 +212,136 @@ export default function ProjectsComponent() {
 
   return (
     <>
-      {/* SEARCH */}
-      <div className="flex justify-between mb-6">
-        <div className="relative w-64">
-          <Search className={`absolute left-3 top-2.5 w-4 h-4 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`} />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search project..."
-            className={`w-full pl-9 py-2 rounded-lg border outline-none
-              ${theme === 'dark'
-                ? 'bg-gray-800 border-gray-700 text-white'
-                : 'bg-white border-gray-300'
-              }`}
-          />
+      {/* 🔥 LATEST COLLABORATION */}
+      {latestCollab && (
+        <div className={`mb-8 p-5 rounded-2xl border ${theme === 'dark' ? 'bg-gray-800/50 border-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-50 border-blue-200'}`}>
+          <div className="flex items-center gap-3 mb-3">
+            <Github className={`w-5 h-5 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
+            <span className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
+              Latest Work
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <img 
+              src={latestCollab.owner.avatar_url} 
+              alt={latestCollab.owner.login}
+              className="w-12 h-12 rounded-full border-2 border-blue-100"
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <a 
+                  href={latestCollab.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`font-bold text-lg hover:underline flex items-center gap-1.5 ${theme === 'dark' ? 'text-white hover:text-blue-400' : 'text-gray-900 hover:text-blue-600'}`}
+                >
+                  <span className="opacity-60">{latestCollab.owner.login}/</span>{latestCollab.name}
+                </a>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* BRANCH INFO */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${theme === 'dark' ? 'bg-gray-900/50 border-gray-700 text-gray-300' : 'bg-white/50 border-blue-100 text-gray-700'}`}>
+                  <GitBranch className="w-4 h-4 text-blue-500" />
+                  <span className="text-xs font-semibold uppercase tracking-tight opacity-60">Branch:</span>
+                  <span className="text-xs font-mono font-bold truncate max-w-[120px]">
+                    {latestCollab.lastCommitBranch || 'main'}
+                  </span>
+                </div>
+
+                {/* COMMIT INFO */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${theme === 'dark' ? 'bg-gray-900/50 border-gray-700 text-gray-300' : 'bg-white/50 border-blue-100 text-gray-700'}`}>
+                  <MessageSquare className="w-4 h-4 text-blue-500" />
+                  <span className="text-xs font-semibold uppercase tracking-tight opacity-60">Last Commit:</span>
+                  <span className="text-xs font-bold truncate max-w-[120px]">
+                    {latestCollab.lastCommitMessage ? (latestCollab.lastCommitMessage.length > 20 ? latestCollab.lastCommitMessage.substring(0, 20) + '...' : latestCollab.lastCommitMessage) : 'Fetching...'}
+                  </span>
+                </div>
+              </div>
+
+              {/* COMMIT MESSAGE DISPLAY */}
+              {latestCollab.lastCommitMessage && (
+                <div className={`mt-3 p-3 rounded-xl border-l-4 border-l-blue-500 ${theme === 'dark' ? 'bg-gray-900/30 border-gray-700' : 'bg-blue-50/50 border-blue-100'}`}>
+                  <div className="flex flex-col gap-2">
+                    <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {/* {latestCollab.lastCommitMessage} */}click to check repository
+                    </p>
+                    {latestCollab.lastCommitUrl && (
+                      <a
+                        href={latestCollab.lastCommitUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1 text-xs font-bold transition-all ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} hover:underline`}
+                      >
+                        https://github.com/{latestCollab.owner.login}/{latestCollab.name}/commit/{latestCollab.lastCommitUrl.split('/').pop()?.substring(0, 7)}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 mt-4 text-[10px] font-bold uppercase tracking-wider">
+                <span className={`px-2 py-0.5 rounded ${latestCollab.private ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                  {latestCollab.private ? 'Private' : 'Public'}
+                </span>
+                <span className={theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}>
+                  • Updated {new Date(latestCollab.updated_at).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* SEARCH - Only show if projects exist */}
+      {projects.length > 0 && (
+        <div className="flex justify-between mb-6">
+          <div className="relative w-64">
+            <Search className={`absolute left-3 top-2.5 w-4 h-4 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search project..."
+              className={`w-full pl-9 py-2 rounded-lg border outline-none
+                ${theme === 'dark'
+                  ? 'bg-gray-800 border-gray-700 text-white'
+                  : 'bg-white border-gray-300'
+                }`}
+            />
+          </div>
+        </div>
+      )}
 
       {/* GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filtered.map(p => (
+        {filtered.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className={`col-span-full flex flex-col items-center justify-center py-16 px-8 rounded-3xl border-2 border-dashed ${theme === 'dark' ? 'bg-gray-900/30 border-gray-700' : 'bg-gradient-to-br from-blue-50/50 to-blue-50/50 border-blue-200'}`}
+          >
+            <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white shadow-lg'}`}>
+              <FolderOpen className={`w-12 h-12 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-500'}`} />
+            </div>
+
+            <h3 className={`text-xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              No Projects Assigned Yet
+            </h3>
+
+            <p className={`text-center max-w-md mb-6 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              Your admin will assign projects to you via <span className="font-bold text-blue-500">Timetricx</span> soon.
+              Check back later or explore your <span className="font-semibold">Latest Work</span> section above!
+            </p>
+
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${theme === 'dark' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
+              <Sparkles className="w-4 h-4" />
+              Stay tuned for exciting assignments!
+            </div>
+          </motion.div>
+        ) : filtered.map(p => (
           <motion.div
             key={p.id}
             initial={{ opacity: 0, y: 25 }}
@@ -122,23 +357,25 @@ export default function ProjectsComponent() {
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 
               group-hover:shadow-xl group-hover:shadow-blue-500/30 transition-all duration-300">
 
-              {/* + BUTTON (TASK MODAL) */}
-              <button
-                onClick={() => {
-                  setActiveProject(p)
-                  setCompleted(p.tasks.completed)
-                  setTotal(p.tasks.total)
-                }}
-                className="absolute top-2 right-2 w-10 h-10 text-white
-                flex items-center justify-center
-                transition-all duration-300
-                hover:scale-110 hover:rotate-90 cursor-pointer"
-              >
-                <svg width="26" height="26" viewBox="0 0 24 24">
-                  <path fill="currentColor"
-                    d="M11 13H6q-.425 0-.712-.288T5 12t.288-.712T6 11h5V6q0-.425.288-.712T12 5t.713.288T13 6v5h5q.425 0 .713.288T19 12t-.288.713T18 13h-5v5q0 .425-.288.713T12 19t-.712-.288T11 18z"/>
-                </svg>
-              </button>
+              {/* + BUTTON (TASK MODAL) - Only show if tasks exist */}
+              {p.tasks.total > 0 && (
+                <button
+                  onClick={() => {
+                    setActiveProject(p)
+                    setCompleted(p.tasks.completed)
+                    setTotal(p.tasks.total)
+                  }}
+                  className="absolute top-2 right-2 w-10 h-10 text-white
+                  flex items-center justify-center
+                  transition-all duration-300
+                  hover:scale-110 hover:rotate-90 cursor-pointer"
+                >
+                  <svg width="26" height="26" viewBox="0 0 24 24">
+                    <path fill="currentColor"
+                      d="M11 13H6q-.425 0-.712-.288T5 12t.288-.712T6 11h5V6q0-.425.288-.712T12 5t.713.288T13 6v5h5q.425 0 .713.288T19 12t-.288.713T18 13h-5v5q0 .425-.288.713T12 19t-.712-.288T11 18z"/>
+                  </svg>
+                </button>
+              )}
             </div>
 
             {/* CLIP PATH */}
@@ -179,27 +416,31 @@ export default function ProjectsComponent() {
                 </button>
               </div>
 
-              {/* PROGRESS */}
-              <div className="mt-4">
-                <div className="flex justify-between text-sm">
-                  <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>Progress</span>
-                  <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>{p.progress}%</span>
+              {/* PROGRESS - Only show if tasks exist */}
+              {p.tasks.total > 0 && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm">
+                    <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>Progress</span>
+                    <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>{p.progress}%</span>
+                  </div>
+                  <div className={`h-2 rounded mt-1 overflow-hidden ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${p.progress}%` }}
+                      transition={{ duration: 0.6 }}
+                      className="h-2 bg-blue-600 rounded"
+                    />
+                  </div>
                 </div>
-                <div className={`h-2 rounded mt-1 overflow-hidden ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'}`}>
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${p.progress}%` }}
-                    transition={{ duration: 0.6 }}
-                    className="h-2 bg-blue-600 rounded"
-                  />
-                </div>
-              </div>
+              )}
 
-              {/* TASK COUNT */}
-              <div className="flex gap-2 mt-4 text-sm">
-                <CheckCircle size={16} className="text-green-600" />
-                {p.tasks.completed}/{p.tasks.total} tasks
-              </div>
+              {/* TASK COUNT - Only show if tasks exist */}
+              {p.tasks.total > 0 && (
+                <div className="flex gap-2 mt-4 text-sm">
+                  <CheckCircle size={16} className="text-green-600" />
+                  {p.tasks.completed}/{p.tasks.total} tasks
+                </div>
+              )}
 
               {/* TEAM */}
               <div className="flex mt-4">

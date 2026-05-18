@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             const publicId = match[1].replace(/\.[^/.]+$/, '');
             await cloudinary.uploader.destroy(publicId, { resource_type: 'image' }).catch(() => { });
             await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }).catch(() => { });
-            console.log(`[CLEANUP] Deleted: ${publicId}`);
+            
           }
         } catch (e) {
           console.warn('[CLEANUP] ERR:', e);
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       { upsert: true, new: true }
     );
 
-    console.log(`[DB SAVE] ✅ docType=${docType} | url=${url} | _id=${saved?._id}`);
+    
 
     return NextResponse.json({
       success: true,

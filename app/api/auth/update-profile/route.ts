@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
             if (uploadMatch && uploadMatch[1]) {
               const publicId = uploadMatch[1];
               await cloudinary.uploader.destroy(publicId);
-              console.log("OLD IMAGE DELETED:", publicId);
+              
             } else {
               // Fallback for cases where regex might fail but it is a cloudinary URL
               const parts = user.profilePicture.split('/');

@@ -146,7 +146,7 @@ export default function WorkingTimeCircle() {
       setAvgTime(countHours > 0 ? totalHours / countHours : 0)
       setTotalExpected(totalWorkingDays)
 
-      const newChart = []
+      const newChart: any[] = []
       if (worked > 0) newChart.push({ name: "Worked", value: worked, color: "#22c55e" }) // Green
       if (compHolidays > 0) newChart.push({ name: "Company Holiday", value: compHolidays, color: "#ec4899" }) // distinct pink
       if (absent > 0) newChart.push({ name: "Absent", value: absent, color: "#ef4444" }) // Red
@@ -228,7 +228,7 @@ export default function WorkingTimeCircle() {
           </p>
         </div>
 
-        <ResponsiveContainer width="100%" height="100%" className="relative z-20">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} className="relative z-20">
           <PieChart>
             <Pie
               data={chart}

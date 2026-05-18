@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     /* ---------- Generate OTP ---------- */
 
     const otp = Math.floor(1000000 + Math.random() * 9000000).toString()
-    console.log("Generated Reset OTP:", otp)
+    
 
     try {
       const savedOtp = await Otp.create({
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
         purpose: 'reset-password',
         expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       })
-      console.log("Reset OTP SAVED IN DB:", savedOtp)
+      
     } catch (err) {
       console.error("Reset OTP SAVE ERROR:", err)
     }
@@ -56,9 +56,9 @@ export async function POST(request: NextRequest) {
     /* ---------- Send Mail ---------- */
 
     try {
-      console.log("📧 Attempting to send reset OTP to:", user.email)
+      
       await sendOtpMail(user.email, otp)
-      console.log("✅ Reset OTP email sent successfully")
+      
     } catch (emailError) {
       console.error("❌ Failed to send reset OTP email:", emailError)
     }

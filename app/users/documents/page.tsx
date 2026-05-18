@@ -257,9 +257,9 @@ export default function InternDocuments() {
       const result = await uploadToCloudinaryDirect(file, email, docType, label, oldUrl);
       
       if (result.success && result.url) {
-        setDocsData(prev => ({
+        setDocsData((prev: Record<string, string | null>) => ({
           ...prev,
-          [docType]: result.url,
+          [docType]: result.url || null,
         }));
         showAlert('Success', `${label} uploaded successfully!`, 'success');
       } else {
@@ -365,7 +365,7 @@ export default function InternDocuments() {
     formData.append('docType', docType);
     formData.append('email', email);
 
-    console.log(`[FRONTEND] Uploading: docType=${docType}, email=${email}, file=${file.name}`);
+    
 
     try {
       const res = await fetch('/api/users/documents/intern-documents', {
@@ -373,7 +373,7 @@ export default function InternDocuments() {
         body: formData,
       });
       const data = await res.json();
-      console.log(`[FRONTEND] Response:`, data);
+      
 
       if (data.success && data.url) {
         // Force update local state immediately

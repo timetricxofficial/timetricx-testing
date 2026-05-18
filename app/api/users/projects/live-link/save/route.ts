@@ -7,11 +7,11 @@ import { ProjectLiveLink } from '@/models/ProjectsLiveLinks'
 export async function POST(req: NextRequest) {
   try {
     await connectDB()
-    console.log('Live link request:', req.body)
+    
 
     const { email, projectName, liveUrl } = await req.json()
     
-    console.log('Live link request:', { email, projectName, liveUrl })
+    
 
     if (!email || !projectName || !liveUrl) {
       return NextResponse.json(
@@ -28,14 +28,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    console.log('User found:', user.email)
+    
 
     const project = await Project.findOne({
       name: projectName,
       teamEmails: { $in: [user.email] }
     })
 
-    console.log('Project found:', project?.name || 'Not found')
+    
 
     if (!project) {
       return NextResponse.json(
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       existingSubmission.liveUrl = liveUrl
       existingSubmission.status = 'pending'
       submission = await existingSubmission.save()
-      console.log('Updated existing submission:', submission._id)
+      
     } else {
       // Create new submission
       submission = await ProjectLiveLink.create({
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
         liveUrl,
         status: 'pending'
       })
-      console.log('Created new submission:', submission._id)
+      
     }
 
     return NextResponse.json({

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../../../contexts/ThemeContext';
 import Cookies from 'js-cookie';
+import { useToast } from '../../../../contexts/ToastContext';
 
 interface CompanyHoliday {
     _id: string;
@@ -16,11 +17,13 @@ type ModalMode = 'holiday' | 'approved' | 'rejected' | 'weekend' | null;
 
 export default function HolidayAnnouncementModal() {
     const { theme } = useTheme();
+    const { success: showSuccess, error: showError } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
     const [showReasonMode, setShowReasonMode] = useState(false);
     const [reason, setReason] = useState("");
     const [modalMode, setModalMode] = useState<ModalMode>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         const fetchHolidays = async () => {
@@ -83,35 +86,38 @@ export default function HolidayAnnouncementModal() {
                         // Check if it's a weekend (Sat/Sun)
                         const day = now.getDay();
                         if (day === 0 || day === 6) { // 0 = Sunday, 6 = Saturday
-                            setTodayHoliday({
-                                _id: 'weekend',
-                                title: day === 0 ? 'Sunday' : 'Saturday',
-                                date: todayDateStr,
-                                animationUrl: 'https://cdn.lottiestatus.com/animations/weekend_chill.mp4', // placeholder or specific
-                                animationResourceType: 'video'
-                            });
+                            // Fetch default holiday for weekend
+                            const defaultHoliday = data.data.find((h: any) => h.isDefault === true);
+                            
+                            if (defaultHoliday) {
+                                setTodayHoliday({
+                                    ...defaultHoliday,
+                                    title: day === 0 ? 'Sunday' : 'Saturday',
+                                    date: todayDateStr
+                                });
 
-                            // Check if request is already made for this weekend
-                            const reqRes = await fetch(`/api/attendance/holiday-requests?email=${user.email}&date=${todayDateStr}`, { cache: 'no-store' });
-                            const reqData = await reqRes.json();
+                                // Check if request is already made for this weekend
+                                const reqRes = await fetch(`/api/attendance/holiday-requests?email=${user.email}&date=${todayDateStr}`, { cache: 'no-store' });
+                                const reqData = await reqRes.json();
 
-                            if (!reqData.data) {
-                                const hasSeen = sessionStorage.getItem(`seen_weekend_${todayDateStr}`);
-                                if (!hasSeen) {
-                                    setModalMode('weekend');
-                                    setIsOpen(true);
-                                }
-                            } else if (reqData.data.status === 'approved') {
-                                const hasSeenApproval = sessionStorage.getItem(`seen_approved_weekend_${todayDateStr}`);
-                                if (!hasSeenApproval) {
-                                    setModalMode('approved');
-                                    setIsOpen(true);
-                                }
-                            } else if (reqData.data.status === 'rejected') {
-                                const hasSeenRejection = sessionStorage.getItem(`seen_rejected_weekend_${todayDateStr}`);
-                                if (!hasSeenRejection) {
-                                    setModalMode('rejected');
-                                    setIsOpen(true);
+                                if (!reqData.data) {
+                                    const hasSeen = sessionStorage.getItem(`seen_weekend_${todayDateStr}`);
+                                    if (!hasSeen) {
+                                        setModalMode('weekend');
+                                        setIsOpen(true);
+                                    }
+                                } else if (reqData.data.status === 'approved') {
+                                    const hasSeenApproval = sessionStorage.getItem(`seen_approved_weekend_${todayDateStr}`);
+                                    if (!hasSeenApproval) {
+                                        setModalMode('approved');
+                                        setIsOpen(true);
+                                    }
+                                } else if (reqData.data.status === 'rejected') {
+                                    const hasSeenRejection = sessionStorage.getItem(`seen_rejected_weekend_${todayDateStr}`);
+                                    if (!hasSeenRejection) {
+                                        setModalMode('rejected');
+                                        setIsOpen(true);
+                                    }
                                 }
                             }
                         }
@@ -181,10 +187,11 @@ export default function HolidayAnnouncementModal() {
 
     const handleRequestToWork = async () => {
         if (!reason.trim()) {
-            alert("Please provide a reason to work on this holiday.");
+            showError('Please provide a reason to work on this holiday.');
             return;
         }
         if (todayHoliday) {
+            setIsSubmitting(true);
             try {
                 const userCookie = Cookies.get("user");
                 if (userCookie) {
@@ -203,7 +210,7 @@ export default function HolidayAnnouncementModal() {
 
                     const data = await res.json();
                     if (data.success) {
-                        alert('Work request submitted successfully!');
+                        showSuccess('Work request submitted successfully!');
                         if (todayHoliday) {
                             if (todayHoliday._id === 'weekend') {
                                 sessionStorage.setItem(`seen_weekend_${todayHoliday.date.substring(0, 10)}`, 'true');
@@ -213,11 +220,14 @@ export default function HolidayAnnouncementModal() {
                         }
                         window.location.reload();
                     } else {
-                        alert(data.message || 'Failed to submit request');
+                        showError(data.message || 'Failed to submit request');
+                        setIsSubmitting(false);
                     }
                 }
             } catch (err) {
                 console.error("Error submitting work request", err);
+                showError('Failed to submit request. Please try again.');
+                setIsSubmitting(false);
             }
         }
         setIsOpen(false);
@@ -414,9 +424,9 @@ export default function HolidayAnnouncementModal() {
                                 <button
                                     onClick={handleRequestToWork}
                                     className="flex-1 py-3 px-4 shadow-lg shadow-blue-500/30 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:opacity-90 transition-transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    disabled={!reason.trim()}
+                                    disabled={!reason.trim() || isSubmitting}
                                 >
-                                    Submit Request
+                                    {isSubmitting ? 'Submitting...' : 'Submit Request'}
                                 </button>
                             </>
                         )}

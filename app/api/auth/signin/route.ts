@@ -160,12 +160,12 @@ export async function POST(request: NextRequest) {
 
     const emails = Array.from(emailSet);
 
-    console.log('--- 🔑 OTP SENDING DEBUG ---');
-    console.log('Primary Account Email:', user.email);
-    console.log('Google Linked Email:', user.authProviders?.google?.email);
-    console.log('GitHub Linked Email:', user.authProviders?.github?.email);
-    console.log('Final Target Emails:', emails);
-    console.log('----------------------------');
+    
+    
+    
+    
+    
+    
 
     const maskedEmails = emails.map(e => e.replace(/(.{3})(.*)(@.*)/, '$1***$3')).join(' & ')
 

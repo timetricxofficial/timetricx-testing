@@ -12,6 +12,9 @@ export interface IMeeting extends Document {
   startTime: Date;
   endTime: Date;
 
+  isPinned?: boolean;
+
+
   status: "scheduled" | "completed" | "cancelled";
 
   readBy: string[]; // ✅ New field
@@ -23,20 +26,16 @@ export interface IMeeting extends Document {
 const MeetingSchema = new Schema(
   {
     projectId: {
-      type: Schema.Types.ObjectId,
-      ref: "Project",
-      required: true,
+      type: String,
     },
 
     projectName: {
       type: String,
-      required: true,
     },
 
     hostEmail: {
       type: String,
       required: true,
-      index: true,
     },
 
     participants: {
@@ -68,6 +67,11 @@ const MeetingSchema = new Schema(
       default: "scheduled",
       index: true,
     },
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+
 
     // ✅ NEW FIELD
     readBy: {

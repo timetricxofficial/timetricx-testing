@@ -19,6 +19,8 @@ export default function Navbar() {
   const { theme, toggleTheme } = useTheme()
   const pathname = usePathname()
 
+  if (!pathname) return null
+
   const showNavbar =
     (pathname === '/' ||
       pathname.includes('/features') ||

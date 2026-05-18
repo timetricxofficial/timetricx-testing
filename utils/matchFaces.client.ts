@@ -35,9 +35,21 @@ export const matchFacesClient = async (
     face2.descriptor
   );
 
+  // Determine match type based on distance thresholds
+  // < 0.45 = success (verified), 0.45-0.6 = partial (face present but low confidence), > 0.6 = fail
+  let matchType: "success" | "partial" | "fail";
+  if (distance < 0.45) {
+    matchType = "success";
+  } else if (distance < 0.6) {
+    matchType = "partial";
+  } else {
+    matchType = "fail";
+  }
+
   return {
     success: true,
     distance,
-    match: distance < 0.45, // threshold
+    match: matchType === "success", // for backward compatibility
+    matchType, // "success" | "partial" | "fail"
   };
 };

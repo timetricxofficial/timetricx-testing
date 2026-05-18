@@ -191,6 +191,15 @@ export default function HelpModal({
                   {ticket.message}
                 </p>
 
+                {ticket.adminReply && (
+                  <div className={`mt-3 p-3 rounded-lg ${theme === 'dark' ? 'bg-blue-900/20 border border-blue-800/30' : 'bg-blue-50 border border-blue-200'}`}>
+                    <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1">Admin Reply:</p>
+                    <p className="text-xs text-gray-700 dark:text-gray-300">
+                      {ticket.adminReply}
+                    </p>
+                  </div>
+                )}
+
                 <p className="text-xs mt-2 text-gray-400">
                   {new Date(ticket.createdAt).toLocaleDateString()}
                 </p>

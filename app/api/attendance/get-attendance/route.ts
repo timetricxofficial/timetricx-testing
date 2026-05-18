@@ -67,8 +67,8 @@ export async function GET(req: Request) {
         : 0;
 
     // 🔥 DEBUG
-    console.log("DEBUG - Total worked hours:", totalWorkedHours);
-    console.log("DEBUG - Equivalent days:", equivalentDays.toFixed(2));
+    
+    
 
     return NextResponse.json({
       success: true,
@@ -82,7 +82,7 @@ export async function GET(req: Request) {
     });
 
   } catch (err) {
-    console.log("GET ATTENDANCE ERROR:", err);
+    
     return NextResponse.json({
       success: false,
       message: "Server error"
