@@ -1,52 +1,63 @@
+
 import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/database'
-import { User } from '@/models/User'
 import { HelpTicket } from '@/models/Help'
 
-export async function GET(req: NextRequest) {
+export async function POST(request: NextRequest) {
 
   try {
 
     await connectDB()
 
-    const email =
-      req.nextUrl.searchParams.get('email')
+    const body = await request.json()
 
-    if (!email) {
+    const {
+      ticketId,
+      sender,
+      text
+    } = body
 
+    if (!ticketId || !sender || !text) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Email required'
+          message: 'Missing fields'
         },
         { status: 400 }
       )
     }
 
-    const user = await User.findOne({
-      email: email.toLowerCase()
-    })
+    const ticket = await HelpTicket.findById(ticketId)
 
-    if (!user) {
-
+    if (!ticket) {
       return NextResponse.json(
         {
           success: false,
-          message: 'User not found'
+          message: 'Ticket not found'
         },
         { status: 404 }
       )
     }
 
-    const tickets = await HelpTicket.find({
-      userEmail: email.toLowerCase()
+    ticket.messages.push({
+      sender,
+      text,
+      createdAt: new Date()
     })
-      .sort({ updatedAt: -1 })
-      .lean()
+
+    ticket.lastMessage = text
+
+    ticket.lastMessageAt = new Date()
+
+    if (ticket.status === 'open') {
+      ticket.status = 'in_progress'
+    }
+
+    await ticket.save()
 
     return NextResponse.json({
       success: true,
-      data: tickets
+      data: ticket
     })
 
   } catch (error) {
@@ -62,3 +73,4 @@ export async function GET(req: NextRequest) {
     )
   }
 }
+
