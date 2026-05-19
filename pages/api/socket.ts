@@ -122,34 +122,26 @@ const ioHandler = (
   req: NextApiRequest,
   res: NextApiResponseServerIO
 ) => {
-
   if (!res.socket.server.io) {
 
     console.log("🔥 Main Socket Server Running");
 
     const io = new ServerIO(res.socket.server, {
-
       path: "/api/socket",
-
       addTrailingSlash: false,
 
       cors: {
         origin: [
+          "https://timetricx-testing.vercel.app",
           "https://timetricx.cybershoora.com",
           "https://ttadmin.cybershoora.com",
           "http://localhost:3002",
           "http://localhost:3003",
         ],
-
         methods: ["GET", "POST"],
-
         credentials: true,
       },
-
-      // 🔥 IMPORTANT
-      transports: ["websocket"],
-
-      allowEIO3: true,
+      transports: ["polling", "websocket"],
     });
 
     io.on("connection", (socket) => {
@@ -157,12 +149,12 @@ const ioHandler = (
       console.log("✅ Connected:", socket.id);
 
       // JOIN ROOM
-      socket.on("join_room", (roomId: string) => {
+      socket.on("join_room", ({ roomId, role }) => {
 
         socket.join(roomId);
 
         console.log(
-          `🚀 ${socket.id} joined room: ${roomId}`
+          `🚀 ${role} ${socket.id} joined room: ${roomId}`
         );
       });
 
@@ -212,11 +204,7 @@ const ioHandler = (
       );
 
       socket.on("disconnect", () => {
-
-        console.log(
-          "❌ Disconnected:",
-          socket.id
-        );
+        console.log("❌ Disconnected:", socket.id);
       });
     });
 
